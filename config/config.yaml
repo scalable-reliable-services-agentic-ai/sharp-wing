@@ -9,9 +9,9 @@ redis:
   generator_tps_key: "generator:target_tps"
   generator_invalid_perc_key: "generator:invalid_percentage"
 
-validator:
-  min_amount: 0
-  max_amount: 100000
+# validator:
+#   min_amount: 0
+#   max_amount: 100000
 
 generator:
   min_sleep_ms: 150

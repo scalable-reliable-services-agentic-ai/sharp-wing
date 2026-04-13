@@ -59,13 +59,30 @@ def main():
 
         # Decide if this transaction should be invalid
         if random.uniform(0, 100) < invalid_percentage:
-            # Invalidate the amount
-            transaction_data["amount"] = (
-                transaction_data["amount"] * -100
-            )  # A simple way to make it invalid
-            logging.warning(
-                f"Generated an invalid transaction ({transaction_data['transaction_id']})"
-            )
+            if random.random() < 0.5:
+                # Invalidate the amount
+                transaction_data["amount"] = (
+                    transaction_data["amount"] * -100
+                )  # A simple way to make it invalid
+                logging.warning(
+                    f"Generated an invalid transaction ({transaction_data['transaction_id']}) - invalid amount"
+                )
+            else:
+                # Invalidate a random field
+                fields_to_invalidate = [
+                    "sender_id",
+                    "receiver_id",
+                    "geolocation",
+                    "ip_address",
+                    "mac_address",
+                    "fingerprint",
+                    "session_id",
+                ]
+                field_to_invalidate = random.choice(fields_to_invalidate)
+                transaction_data[field_to_invalidate] = ""
+                logging.warning(
+                    f"Generated an invalid transaction ({transaction_data['transaction_id']}) - missing {field_to_invalidate}"
+                )
 
         # Render the template and push to Redis
         transaction_json_str = template.render(transaction_data)

@@ -20,14 +20,61 @@ def load_config():
         return yaml.safe_load(f)
 
 
-def validate_transaction(transaction, min_amount, max_amount):
-    amount = transaction["transaction"]["public"]["amount"]
-    if amount <= min_amount:
-        return False, "Amount too low"
-    if amount >= max_amount:
-        return False, "Amount too high"
-    return True, None
+def __validate_string_data(transaction_body, attribute):
+    if transaction_body[attribute] is None:
+        return False
+    elif transaction_body[attribute] == "":
+        return False
+    else:
+        return True
 
+def _validate_sender(transaction_body):
+    return __validate_string_data(transaction_body, 'sender_id')
+
+def _validate_receiver(transaction_body):
+    return __validate_string_data(transaction_body, 'receiver_id')
+
+def _validate_amount(transaction_body):
+    return False if transaction_body['amount'] <= 0 else True
+
+def _validate_geolocation(transaction_body):
+    return __validate_string_data(transaction_body, 'geolocation')
+
+def _validate_ipaddress(transaction_body):
+    # TODO: check string format 
+    return __validate_string_data(transaction_body, 'ip_address')
+
+def _validate_macaddress(transaction_body):
+    # TODO: check string format
+    return __validate_string_data(transaction_body, 'mac_address')
+
+def _validate_fingerprint(transaction_body):
+    return __validate_string_data(transaction_body, 'fingerprint')
+
+def _validate_sessionid(transaction_body):
+    return __validate_string_data(transaction_body, 'session_id')
+
+
+def validate_transaction(transaction):
+    t_body = transaction['transaction']['public']
+    if not _validate_sender(t_body):
+        return False, "invalid sender id"
+    if not _validate_receiver(t_body):
+        return False, "invalid receiver id"
+    if not _validate_amount(t_body):
+        return False, "invalid amount"
+    if not _validate_geolocation(t_body):
+        return False, "invalid geolocation"
+    if not _validate_ipaddress(t_body):
+        return False, "invalid ip address"
+    if not _validate_macaddress(t_body):
+        return False, "invalid mac address"
+    if not _validate_fingerprint(t_body):
+        return False, "invalid fingerprint"
+    if not _validate_sessionid(t_body):
+        return False, "invalid session id"
+    return True, ""
+    
 
 def main():
     config = load_config()
@@ -43,8 +90,8 @@ def main():
     invalid_list = config["redis"]["invalid_transactions_list"]
     update_channel = config["redis"]["update_channel"]
 
-    min_amount = config["validator"]["min_amount"]
-    max_amount = config["validator"]["max_amount"]
+    # min_amount = config["validator"]["min_amount"]
+    # max_amount = config["validator"]["max_amount"]
 
     logging.info("Validator starting.")
 
@@ -52,7 +99,7 @@ def main():
         _, transaction_json = r.brpop(queue_name)
         transaction = json.loads(transaction_json)
 
-        is_valid, reason = validate_transaction(transaction, min_amount, max_amount)
+        is_valid, reason = validate_transaction(transaction)
 
         if is_valid:
             r.incr(correct_key)
