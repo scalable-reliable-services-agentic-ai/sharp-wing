@@ -7,14 +7,14 @@ services:
   generator:
     build:
       context: .
-      dockerfile: build/generator.Dockerfile
+      dockerfile: docker/generator.Dockerfile
     depends_on:
       - redis
 
   validator:
     build:
       context: .
-      dockerfile: build/validator.Dockerfile
+      dockerfile: docker/validator.Dockerfile
     deploy:
       replicas: 2 # Start with two, can be scaled with `docker-compose up --scale validator=N`
     depends_on:
@@ -23,7 +23,7 @@ services:
   reporter:
     build:
       context: .
-      dockerfile: build/reporter.Dockerfile
+      dockerfile: docker/reporter.Dockerfile
     ports:
       - "5000:5000"
     depends_on:
@@ -32,7 +32,7 @@ services:
   control_panel:
     build:
       context: .
-      dockerfile: build/control_panel.Dockerfile
+      dockerfile: docker/control_panel.Dockerfile
     ports:
       - "5003:5003"
     depends_on:
