@@ -1,0 +1,17 @@
+
+[project]
+name = "transaction_fraud_detection_system"
+version = "0.1.0"
+dependencies = [
+    "flask",
+    "flask-sse",
+    "redis",
+    "pyyaml",
+    "jinja2"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+]

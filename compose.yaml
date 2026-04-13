@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:6.2-alpine
+    ports:
+      - "6379:6379"
+
+  generator:
+    build:
+      context: .
+      dockerfile: build/generator.Dockerfile
+    depends_on:
+      - redis
+
+  validator:
+    build:
+      context: .
+      dockerfile: build/validator.Dockerfile
+    deploy:
+      replicas: 2 # Start with two, can be scaled with `docker-compose up --scale validator=N`
+    depends_on:
+      - redis
+
+  reporter:
+    build:
+      context: .
+      dockerfile: build/reporter.Dockerfile
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+
+  control_panel:
+    build:
+      context: .
+      dockerfile: build/control_panel.Dockerfile
+    ports:
+      - "5003:5003"
+    depends_on:
+      - redis

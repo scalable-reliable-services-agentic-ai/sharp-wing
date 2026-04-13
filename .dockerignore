@@ -1,0 +1,21 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+docker-compose.yml
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Ruff cache
+.ruff_cache/
+
+# IDE / Editor directories
+.idea/
+.vscode/
+
+# Other
+README.md

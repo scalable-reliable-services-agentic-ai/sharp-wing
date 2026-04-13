@@ -1,0 +1,27 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Invalid Transactions</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Invalid Transactions</h1>
+    <a href="/">Back to Dashboard</a>
+    <hr>
+    <table>
+        <tr>
+            <th>Transaction ID</th>
+            <th>Value</th>
+            <th>Reason</th>
+        </tr>
+        {% for t in transactions %}
+            <tr>
+                <td>{{ t.transaction.public.transaction_id }}</td>
+                <td>{{ t.transaction.public.amount }}</td>
+                <td>{{ t.reason }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

@@ -1,0 +1,45 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Transaction Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Transaction Dashboard</h1>
+    <p>Monitoring since: <span id="start_time">...</span></p>
+    <p>Current time: <span id="current_time">...</span></p>
+    <hr>
+    <h2>Verification Stats</h2>
+    <p>Total Verified: <span id="total_verified">...</span></p>
+    <p>Correct Transactions: <span id="correct_count">...</span></p>
+    <p>Invalid Transactions: <span id="invalid_count">...</span></p>
+    <p>Average Transactions/sec: <span id="avg_tps">...</span></p>
+    <hr>
+    <a href="/invalid">View Invalid Transactions</a>
+
+    <script>
+        function updateData() {
+            fetch("/data")
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("start_time").textContent = data.start_time;
+                    document.getElementById("current_time").textContent = data.current_time;
+                    document.getElementById("total_verified").textContent = data.total_verified;
+                    document.getElementById("correct_count").textContent = data.correct_count;
+                    document.getElementById("invalid_count").textContent = data.invalid_count;
+                    document.getElementById("avg_tps").textContent = data.avg_tps;
+                });
+        }
+
+        // Initial data load
+        updateData();
+
+        // Set up SSE connection
+        const eventSource = new EventSource("/stream");
+        eventSource.addEventListener("data_update", function(event) {
+            updateData();
+        });
+    </script>
+</body>
+</html>
