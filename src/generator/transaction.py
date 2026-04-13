@@ -6,7 +6,7 @@ import random
 class Transaction:
     def __init__(self):
         self.transaction_id = self._create_transaction_id()
-        self.account_id = self._create_client_id()
+        self.sender_id = self._create_client_id()
         self.receiver_id = self._create_client_id()
         self.timestamp = datetime.now(timezone.utc).isoformat()
         self.type, self.channel = self._create_pair_type_channel()
@@ -55,7 +55,7 @@ class Transaction:
         """Generates a dictionary of random data for the template."""
         return {
             "transaction_id": self.transaction_id,
-            "account_id": self.account_id,
+            "sender_id": self.sender_id,
             "receiver_id": self.receiver_id,
             "timestamp": self.timestamp,
             "transaction_type": self.type,
