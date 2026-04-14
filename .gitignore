@@ -1,6 +1,8 @@
 docs/app_plan.md
 session-ses_*
 
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
