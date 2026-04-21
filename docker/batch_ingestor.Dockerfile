@@ -1,5 +1,3 @@
-# build/control_panel.Dockerfile
-
 # Stage 1: Build the base environment
 FROM python:3.12-slim AS base
 
@@ -15,12 +13,9 @@ RUN uv pip install --system .
 # Stage 2: Create the final image
 FROM base AS final
 
-WORKDIR /app
+COPY src/ /app/src
 
-COPY src/control_panel/ /app/src/control_panel/
-COPY config/ /app/config/
-
-# Set the PYTHONPATH to include the src directory
+# Set the python path to the root of the app
 ENV PYTHONPATH=/app
 
-CMD ["python", "-u", "src/control_panel/main.py"]
+CMD ["python", "-m", "src.batch_ingestor.main"]

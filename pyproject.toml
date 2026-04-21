@@ -5,9 +5,13 @@ version = "0.1.0"
 dependencies = [
     "flask",
     "flask-sse",
-    "redis",
+    "redis[async]",
     "pyyaml",
-    "jinja2"
+    "jinja2",
+    "aiokafka",
+    "asyncpg",
+    "sqlalchemy",
+    "psycopg2-binary"
 ]
 
 [project.optional-dependencies]

@@ -1,24 +1,127 @@
 services:
+  # Core Infrastructure
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    mem_limit: 1g
+    command: >
+      bash -c "rm -rf /var/lib/zookeeper/data/* /var/lib/zookeeper/log/* &&
+      /etc/confluent/docker/run"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "cub", "kafka-ready", "-b", "kafka:29092", "1", "10"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 2g
+
+  kafka-topics-creator:
+    image: confluentinc/cp-kafka:7.0.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...' &&
+        cub kafka-ready -b kafka:29092 1 30 &&
+        echo 'Kafka is ready!' &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_RAW_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_VALIDATED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_FINAL_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+        echo 'Topics created!'
+      "
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$DB_USER -d $$DB_NAME"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 2g
+
   redis:
     image: redis:6.2-alpine
+    container_name: redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Application Services
   generator:
     build:
       context: .
       dockerfile: docker/generator.Dockerfile
+    env_file:
+      - .env
     depends_on:
-      - redis
+      kafka:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
 
   validator:
     build:
       context: .
       dockerfile: docker/validator.Dockerfile
-    deploy:
-      replicas: 2 # Start with two, can be scaled with `docker-compose up --scale validator=N`
+    env_file:
+      - .env
     depends_on:
-      - redis
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
+
+  batch-ingestor:
+    build:
+      context: .
+      dockerfile: docker/batch_ingestor.Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
 
   reporter:
     build:
@@ -26,14 +129,10 @@ services:
       dockerfile: docker/reporter.Dockerfile
     ports:
       - "5000:5000"
+    env_file:
+      - .env
     depends_on:
-      - redis
-
-  control_panel:
-    build:
-      context: .
-      dockerfile: docker/control_panel.Dockerfile
-    ports:
-      - "5003:5003"
-    depends_on:
-      - redis
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

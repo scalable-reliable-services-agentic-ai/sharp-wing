@@ -1,97 +1,63 @@
-from src.generator.transaction import Transaction
-
-import redis
+import os
+import json
 import random
-import time
-import yaml
 import logging
-from jinja2 import Environment, FileSystemLoader
+import asyncio
+from aiokafka import AIOKafkaProducer
+from src.generator.transaction import Transaction
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+# --- Environment & Constants ---
+KAFKA_BROKER = os.environ["KAFKA_BROKER"]
+KAFKA_TOPIC = os.environ["KAFKA_RAW_TRANSACTIONS_TOPIC"]
 
-def load_config():
-    with open("config/config.yaml", "r") as f:
-        return yaml.safe_load(f)
 
-
-def main():
-    config = load_config()
-    r = redis.Redis(
-        host=config["redis"]["host"],
-        port=config["redis"]["port"],
-        decode_responses=True,
-    )
-
-    # Jinja2 setup
-    env = Environment(loader=FileSystemLoader("src/generator/templates"))
-    template = env.get_template("transaction_template.json.j2")
-
-    # Redis keys
-    queue_name = config["redis"]["transaction_queue"]
-    tps_key = config["redis"]["generator_tps_key"]
-    invalid_perc_key = config["redis"]["generator_invalid_perc_key"]
-
-    logging.info("Generator starting.")
+# --- Connection Handlers ---
+async def get_kafka_producer():
     while True:
-        # Get current settings from Redis, with fallbacks to config file
         try:
-            target_tps = float(r.get(tps_key) or config["generator"]["default_tps"])
-            invalid_percentage = int(
-                r.get(invalid_perc_key)
-                or config["generator"]["default_invalid_percentage"]
+            producer = AIOKafkaProducer(
+                bootstrap_servers=KAFKA_BROKER,
+                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             )
-        except (ValueError, TypeError):
-            logging.warning("Could not parse settings from Redis, using defaults.")
-            target_tps = config["generator"]["default_tps"]
-            invalid_percentage = config["generator"]["default_invalid_percentage"]
+            await producer.start()
+            logging.info("AIOKafkaProducer connected.")
+            return producer
+        except Exception as e:
+            logging.error(f"Could not connect to Kafka: {e}. Retrying...")
+            await asyncio.sleep(5)
 
-        # Calculate sleep time based on target TPS
-        avg_sleep = 1.0 / target_tps
-        min_sleep = avg_sleep * 0.8
-        max_sleep = avg_sleep * 1.2
 
-        # Generate a new transaction
-        t = Transaction()
-        transaction_data = t.generate_transaction_data()
+# --- Main Application ---
+async def main():
+    producer = await get_kafka_producer()
+    logging.info(f"Generator starting, producing to topic '{KAFKA_TOPIC}'.")
 
-        # Decide if this transaction should be invalid
-        if random.uniform(0, 100) < invalid_percentage:
-            if random.random() < 0.5:
-                # Invalidate the amount
-                transaction_data["amount"] = (
-                    transaction_data["amount"] * -100
-                )  # A simple way to make it invalid
-                logging.warning(
-                    f"Generated an invalid transaction ({transaction_data['transaction_id']}) - invalid amount"
-                )
-            else:
-                # Invalidate a random field
-                fields_to_invalidate = [
-                    "sender_id",
-                    "receiver_id",
-                    "geolocation",
-                    "ip_address",
-                    "mac_address",
-                    "fingerprint",
-                    "session_id",
-                ]
-                field_to_invalidate = random.choice(fields_to_invalidate)
-                transaction_data[field_to_invalidate] = ""
-                logging.warning(
-                    f"Generated an invalid transaction ({transaction_data['transaction_id']}) - missing {field_to_invalidate}"
+    try:
+        while True:
+            try:
+                # Generate and send transaction
+                transaction = Transaction()
+                transaction_data = transaction.get_kafka_message()
+                await producer.send_and_wait(KAFKA_TOPIC, transaction_data)
+                logging.info(
+                    f"Produced transaction: {transaction_data['transaction_id']}"
                 )
 
-        # Render the template and push to Redis
-        transaction_json_str = template.render(transaction_data)
-        r.lpush(queue_name, transaction_json_str)
-        logging.info(f"Produced: {transaction_data['transaction_id']}")
+                # Sleep for a random interval
+                min_sleep = int(os.environ["GENERATOR_MIN_SLEEP_MS"]) / 1000.0
+                max_sleep = int(os.environ["GENERATOR_MAX_SLEEP_MS"]) / 1000.0
+                await asyncio.sleep(random.uniform(min_sleep, max_sleep))
 
-        # Sleep for a bit
-        time.sleep(random.uniform(min_sleep, max_sleep))
+            except Exception as e:
+                logging.error(f"An error occurred in the main loop: {e}")
+                await asyncio.sleep(5)
+    finally:
+        await producer.stop()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -1,122 +1,160 @@
-"""Validator service."""
-
-import sys
 import os
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-import redis
+import time
 import json
-import yaml
 import logging
+import asyncio
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+import redis.asyncio as aioredis
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-
-def load_config():
-    with open("config/config.yaml", "r") as f:
-        return yaml.safe_load(f)
-
-
-def __validate_string_data(transaction_body, attribute):
-    if transaction_body[attribute] is None:
-        return False
-    elif transaction_body[attribute] == "":
-        return False
-    else:
-        return True
-
-def _validate_sender(transaction_body):
-    return __validate_string_data(transaction_body, 'sender_id')
-
-def _validate_receiver(transaction_body):
-    return __validate_string_data(transaction_body, 'receiver_id')
-
-def _validate_amount(transaction_body):
-    return False if transaction_body['amount'] <= 0 else True
-
-def _validate_geolocation(transaction_body):
-    return __validate_string_data(transaction_body, 'geolocation')
-
-def _validate_ipaddress(transaction_body):
-    # TODO: check string format 
-    return __validate_string_data(transaction_body, 'ip_address')
-
-def _validate_macaddress(transaction_body):
-    # TODO: check string format
-    return __validate_string_data(transaction_body, 'mac_address')
-
-def _validate_fingerprint(transaction_body):
-    return __validate_string_data(transaction_body, 'fingerprint')
-
-def _validate_sessionid(transaction_body):
-    return __validate_string_data(transaction_body, 'session_id')
+# --- Environment Variables ---
+KAFKA_BROKER = os.environ["KAFKA_BROKER"]
+IN_TOPIC = os.environ["KAFKA_RAW_TRANSACTIONS_TOPIC"]
+FINAL_TOPIC = os.environ["KAFKA_FINAL_TRANSACTIONS_TOPIC"]
+REDIS_HOST = os.environ["REDIS_HOST"]
 
 
-def validate_transaction(transaction):
-    t_body = transaction['transaction']['public']
-    if not _validate_sender(t_body):
-        return False, "invalid sender id"
-    if not _validate_receiver(t_body):
-        return False, "invalid receiver id"
-    if not _validate_amount(t_body):
-        return False, "invalid amount"
-    if not _validate_geolocation(t_body):
-        return False, "invalid geolocation"
-    if not _validate_ipaddress(t_body):
-        return False, "invalid ip address"
-    if not _validate_macaddress(t_body):
-        return False, "invalid mac address"
-    if not _validate_fingerprint(t_body):
-        return False, "invalid fingerprint"
-    if not _validate_sessionid(t_body):
-        return False, "invalid session id"
-    return True, ""
-    
-
-def main():
-    config = load_config()
-    r = redis.Redis(
-        host=config["redis"]["host"],
-        port=config["redis"]["port"],
-        decode_responses=True,
-    )
-
-    queue_name = config["redis"]["transaction_queue"]
-    correct_key = config["redis"]["correct_transactions_key"]
-    invalid_key = config["redis"]["invalid_transactions_key"]
-    invalid_list = config["redis"]["invalid_transactions_list"]
-    update_channel = config["redis"]["update_channel"]
-
-    # min_amount = config["validator"]["min_amount"]
-    # max_amount = config["validator"]["max_amount"]
-
-    logging.info("Validator starting.")
-
+# --- Connection Handlers ---
+async def get_kafka_consumer():
     while True:
-        _, transaction_json = r.brpop(queue_name)
-        transaction = json.loads(transaction_json)
+        try:
+            consumer = AIOKafkaConsumer(
+                IN_TOPIC,
+                bootstrap_servers=KAFKA_BROKER,
+                auto_offset_reset="earliest",
+                group_id="validator-group",
+                value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+            )
+            await consumer.start()
+            logging.info("AIOKafkaConsumer connected.")
+            return consumer
+        except Exception as e:
+            logging.error(f"Could not connect to Kafka Consumer: {e}. Retrying...")
+            await asyncio.sleep(5)
 
-        is_valid, reason = validate_transaction(transaction)
 
+async def get_kafka_producer():
+    while True:
+        try:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=KAFKA_BROKER,
+                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            )
+            await producer.start()
+            logging.info("AIOKafkaProducer connected.")
+            return producer
+        except Exception as e:
+            logging.error(f"Could not connect to Kafka Producer: {e}. Retrying...")
+            await asyncio.sleep(5)
+
+
+async def get_redis_connection():
+    while True:
+        try:
+            r = aioredis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
+            await r.ping()
+            logging.info("Async Redis connection established.")
+            return r
+        except Exception as e:
+            logging.error(f"Could not connect to Redis: {e}. Retrying...")
+            await asyncio.sleep(5)
+
+
+# --- Core Logic ---
+async def process_message(message, producer, redis_client):
+    try:
+        transaction = message.value
+
+        # Add initial state and history
+        transaction["current_state"] = "received"
+        transaction["history"] = []
+
+        # --- Real-time Client Profile Update ---
+        client_id = transaction["client_id"]
+        amount = transaction["amount"]
+        # Use a pipeline for atomic operations
+        pipe = redis_client.pipeline()
+        pipe.lpush(f"client:{client_id}:amounts", amount)
+        pipe.ltrim(f"client:{client_id}:amounts", 0, 4)
+        pipe.hset(
+            f"client:{client_id}:profile",
+            mapping={
+                "last_location": transaction["location"],
+                "last_ip": transaction["ip_address"],
+                "last_seen_ts": transaction["timestamp_ms"],
+            },
+        )
+        await pipe.execute()
+
+        # --- Validation Logic ---
+        min_amount = int(os.environ["VALIDATOR_MIN_AMOUNT"])
+        max_amount = int(os.environ["VALIDATOR_MAX_AMOUNT"])
+        is_valid = min_amount < transaction["amount"] < max_amount
+        reason = (
+            ""
+            if is_valid
+            else f"Amount outside of valid range ({min_amount}-{max_amount})"
+        )
+
+        # --- Routing ---
         if is_valid:
-            r.incr(correct_key)
-            logging.info(
-                f"Validated (Correct): {transaction['transaction']['public']['transaction_id']}"
+            transaction["current_state"] = "clean"
+            transaction["history"].append(
+                {
+                    "service": "validator",
+                    "decision": "clean",
+                    "ts": int(time.time() * 1000),
+                }
             )
+            await producer.send_and_wait(FINAL_TOPIC, transaction)
+            await redis_client.incr("total_validated_realtime")
+            logging.info(f"Validated transaction {transaction['transaction_id']}: OK")
         else:
-            r.incr(invalid_key)
-            # Add the reason to the transaction object itself before storing it
-            transaction["reason"] = reason
-            r.lpush(invalid_list, json.dumps(transaction))
+            transaction["current_state"] = "invalid"
+            transaction["history"].append(
+                {
+                    "service": "validator",
+                    "decision": "invalid",
+                    "reason": reason,
+                    "ts": int(time.time() * 1000),
+                }
+            )
+            await producer.send_and_wait(FINAL_TOPIC, transaction)
+            pipe = redis_client.pipeline()
+            pipe.incr("total_invalid_realtime")
+            pipe.lpush("recent_invalid_transactions", json.dumps(transaction))
+            pipe.ltrim("recent_invalid_transactions", 0, 99)
+            await pipe.execute()
             logging.warning(
-                f"Validated (Invalid): {transaction['transaction']['public']['transaction_id']} - Reason: {reason}"
+                f"Validated transaction {transaction['transaction_id']}: INVALID - {reason}"
             )
 
-        r.publish(update_channel, "update")
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to decode message: {message.value}. Error: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while processing message: {e}")
+
+
+# --- Main Application Runner ---
+async def main():
+    # Initialize connections
+    consumer = await get_kafka_consumer()
+    producer = await get_kafka_producer()
+    redis_client = await get_redis_connection()
+
+    logging.info(f"Validator starting. Consuming from topic: {IN_TOPIC}")
+    try:
+        async for message in consumer:
+            # Create a non-blocking task to process each message
+            asyncio.create_task(process_message(message, producer, redis_client))
+    finally:
+        await consumer.stop()
+        await producer.stop()
+        await redis_client.close()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

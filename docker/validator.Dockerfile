@@ -13,10 +13,9 @@ RUN uv pip install --system .
 # Stage 2: Create the final image
 FROM base AS final
 
-COPY src/validator/ /app/src/validator
-COPY config/ /app/config
+COPY src/ /app/src
 
 # Set the python path to the root of the app
 ENV PYTHONPATH=/app
 
-CMD ["python", "-u", "src/validator/main.py"]
+CMD ["python", "-m", "src.validator.main"]

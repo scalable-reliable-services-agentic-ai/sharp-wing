@@ -16,7 +16,8 @@ help:
 	@echo "  logs         - Show logs from Docker containers."
 	@echo "  stop         - Stop Docker containers."
 	@echo "  destroy      - Destroy Docker containers."
-	@echo "  clean-docker - Stop and destroy Docker containers."
+	@echo "  clean-docker - Stop and destroy Docker containers, and volumes."
+	@echo "  reset        - Reset the entire environment (clean-docker + setup)."
 
 # =============================================================================
 # Development Environment Setup
@@ -72,7 +73,15 @@ format: check_venv
 # Docker Commands
 # =============================================================================
 
-.PHONY: build run setup logs stop destroy clean-docker
+.PHONY: build run setup logs stop destroy clean-docker reset
+
+clean-db: clean-docker
+
+reset:
+	@echo "Resetting the entire environment..."
+	@make clean-docker
+	@make setup
+	@echo "Environment has been reset."
 
 build:
 	@echo "Building Docker images..."
