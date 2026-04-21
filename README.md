@@ -44,6 +44,31 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 <img width="400" height="651" alt="image" src="https://github.com/user-attachments/assets/8cdf5f3b-1955-43c6-9365-74a8e25da9e3" />
 
 
+## TODO
+
+- [Miki] Database setup and queue update
+    1. Switching from Redis to Kafka [speed layer]
+    1. Configuring TimeseriesDB (extention of PostgreSQL) [batch layer]
+    1. Lambda architecture setup
+
+- [Arash] Database insertion
+    1. Create scenarios of different client types, including:
+        - spending amounts
+        - frequency of their transactions
+        - amount and time patterns (e.g. spending less on weekdays and a lot on weekends)
+        - location (some clients are only in italy, other are all over the world)
+        - other features based on attributes from the `Transaction` class in `src/generator/transaction.py`
+    1. Prepare a file/script that will be used to load the data into the DB (_needed to decide how many rows or different client IDs: 1k? 30k? 200k? 1M?_)
+
+- [NotAssignedYet] Generator update
+    1. Transactions should generate new transactions including both new clients and clients that already exist in the database. Generation of transactions for the existing clients should take into the account their behaviour patterns (described in _scenarios_ from previous point)
+    1. The invlaid/fraud clients should be identified before or in the moment of generation (with known reason and explanation why). That will let us test if the anomaly detection works properly. 
+
+- [Pietro] PowerBI dashboard
+    1. to verify connection of the TimeseriesDB or PostreSQL with PowerBI
+    1. to verify visualisation possibilities
+    1. to verify uploading the dashboard to a local enviroment and cloud
+
 ## ToDo -- draft (thoughts, brainstorm)
 
 ### System
