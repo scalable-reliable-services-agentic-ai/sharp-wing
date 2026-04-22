@@ -14,7 +14,7 @@ class Transaction(Base):
     transaction_type = Column(Text)
     channel = Column(Text)
     amount = Column(Float)
-    currency = Column(String(10))
+    currency = Column(Text)
     location = Column(Text)
     ip_address = Column(Text)
     mac_address = Column(Text)
