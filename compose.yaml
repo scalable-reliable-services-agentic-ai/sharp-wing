@@ -4,6 +4,17 @@ services:
     ports:
       - "6379:6379"
 
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fraud_detection_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   generator:
     build:
       context: .
@@ -19,6 +30,7 @@ services:
       replicas: 2 # Start with two, can be scaled with `docker-compose up --scale validator=N`
     depends_on:
       - redis
+      - postgres
 
   reporter:
     build:
@@ -28,6 +40,7 @@ services:
       - "5000:5000"
     depends_on:
       - redis
+      - postgres
 
   control_panel:
     build:
@@ -37,3 +50,7 @@ services:
       - "5003:5003"
     depends_on:
       - redis
+      - postgres
+
+volumes:
+  postgres_data:

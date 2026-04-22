@@ -18,3 +18,10 @@ generator:
   max_sleep_ms: 2000
   default_tps: 2
   default_invalid_percentage: 10
+
+postgres:
+  host: "postgres" # Refers to the Docker service name
+  port: 5432
+  dbname: "fraud_detection_db"
+  user: "postgres"
+  password: "password"
