@@ -1,9 +1,9 @@
-import os
 import json
 import random
 import logging
 import asyncio
 from aiokafka import AIOKafkaProducer
+from src.config import settings
 from src.generator.transaction import Transaction
 
 logging.basicConfig(
@@ -11,8 +11,8 @@ logging.basicConfig(
 )
 
 # --- Environment & Constants ---
-KAFKA_BROKER = os.environ["KAFKA_BROKER"]
-KAFKA_TOPIC = os.environ["KAFKA_RAW_TRANSACTIONS_TOPIC"]
+KAFKA_BROKER = settings.kafka_broker
+KAFKA_TOPIC = settings.kafka_raw_transactions_topic
 
 
 # --- Connection Handlers ---
@@ -48,8 +48,8 @@ async def main():
                 )
 
                 # Sleep for a random interval
-                min_sleep = int(os.environ["GENERATOR_MIN_SLEEP_MS"]) / 1000.0
-                max_sleep = int(os.environ["GENERATOR_MAX_SLEEP_MS"]) / 1000.0
+                min_sleep = settings.generator_min_sleep_ms / 1000.0
+                max_sleep = settings.generator_max_sleep_ms / 1000.0
                 await asyncio.sleep(random.uniform(min_sleep, max_sleep))
 
             except Exception as e:

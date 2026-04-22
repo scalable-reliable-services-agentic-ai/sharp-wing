@@ -1,12 +1,12 @@
-import os
 import time
 import logging
 import json
 import asyncio
 from aiokafka import AIOKafkaConsumer
-from sqlalchemy import text, Column, BigInteger, String, Float
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from src.config import settings
 from src.database.models import Base, Transaction
 
 logging.basicConfig(
@@ -14,15 +14,11 @@ logging.basicConfig(
 )
 
 # --- Environment Variables ---
-BATCH_SIZE = int(os.environ["BATCH_SIZE"])
-BATCH_INTERVAL = int(os.environ["BATCH_INTERVAL"])
-KAFKA_BROKER = os.environ["KAFKA_BROKER"]
-KAFKA_TOPIC = os.environ["KAFKA_FINAL_TRANSACTIONS_TOPIC"]
-DB_USER = os.environ["DB_USER"]
-DB_PASSWORD = os.environ["DB_PASSWORD"]
-DB_HOST = os.environ["DB_HOST"]
-DB_NAME = os.environ["DB_NAME"]
-DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+BATCH_SIZE = settings.batch_size
+BATCH_INTERVAL = settings.batch_interval
+KAFKA_BROKER = settings.kafka_broker
+KAFKA_TOPIC = settings.kafka_final_transactions_topic
+DATABASE_URL = settings.async_database_url
 
 
 # --- Connection & Setup ---
@@ -30,8 +26,8 @@ async def get_db_engine():
     while True:
         try:
             engine = create_async_engine(DATABASE_URL)
-            async with engine.connect() as connection:
-                logging.info("Database connection established successfully.")
+            async with engine.connect():
+                logging.info("Database connection established successfully")
                 return engine
         except Exception as e:
             logging.error(

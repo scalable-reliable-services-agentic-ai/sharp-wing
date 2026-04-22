@@ -54,6 +54,7 @@ clean:
 	@find . -type f -name "*.py[co]" -delete
 	@find . -type d -name "__pycache__" -delete
 	@find . -maxdepth 1 -type f -name "uv.lock" -delete
+	@find . -maxdepth 3 -type d -name "*.egg-info" -exec rm -rf {} +
 	@rm -rf .ruff_cache
 	@echo "venv deleted, cache files removed"
 

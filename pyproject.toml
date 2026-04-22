@@ -3,6 +3,7 @@
 name = "transaction_fraud_detection_system"
 version = "0.1.0"
 dependencies = [
+    "logging",
     "flask",
     "flask-sse",
     "redis[async]",
@@ -11,7 +12,8 @@ dependencies = [
     "aiokafka",
     "asyncpg",
     "sqlalchemy",
-    "psycopg2-binary"
+    "psycopg2-binary",
+    "pydantic-settings"
 ]
 
 [project.optional-dependencies]

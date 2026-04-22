@@ -40,7 +40,9 @@ services:
       kafka:
         condition: service_healthy
     env_file:
+      - common.env
       - .env
+
     command: >
       bash -c "
         echo 'Waiting for Kafka to be ready...' &&
@@ -53,19 +55,17 @@ services:
         echo 'Topics created!'
       "
 
+  # Databases
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     container_name: timescaledb
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
     env_file:
+      - common.env
       - .env
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$DB_USER -d $$DB_NAME"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -88,6 +88,7 @@ services:
       context: .
       dockerfile: docker/generator.Dockerfile
     env_file:
+      - common.env
       - .env
     depends_on:
       kafka:
@@ -100,6 +101,7 @@ services:
       context: .
       dockerfile: docker/validator.Dockerfile
     env_file:
+      - common.env
       - .env
     depends_on:
       kafka:
@@ -114,6 +116,7 @@ services:
       context: .
       dockerfile: docker/batch_ingestor.Dockerfile
     env_file:
+      - common.env
       - .env
     depends_on:
       kafka:
@@ -130,6 +133,7 @@ services:
     ports:
       - "5000:5000"
     env_file:
+      - common.env
       - .env
     depends_on:
       timescaledb:

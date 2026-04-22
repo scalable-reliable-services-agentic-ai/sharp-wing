@@ -1,20 +1,20 @@
-import os
-import time
 import json
-import logging
+import time
 import asyncio
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import redis.asyncio as aioredis
+from src.config import settings
+import logging
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 # --- Environment Variables ---
-KAFKA_BROKER = os.environ["KAFKA_BROKER"]
-IN_TOPIC = os.environ["KAFKA_RAW_TRANSACTIONS_TOPIC"]
-FINAL_TOPIC = os.environ["KAFKA_FINAL_TRANSACTIONS_TOPIC"]
-REDIS_HOST = os.environ["REDIS_HOST"]
+KAFKA_BROKER = settings.kafka_broker
+IN_TOPIC = settings.kafka_raw_transactions_topic
+FINAL_TOPIC = settings.kafka_final_transactions_topic
+REDIS_HOST = settings.redis_host
 
 
 # --- Connection Handlers ---
@@ -90,8 +90,8 @@ async def process_message(message, producer, redis_client):
         await pipe.execute()
 
         # --- Validation Logic ---
-        min_amount = int(os.environ["VALIDATOR_MIN_AMOUNT"])
-        max_amount = int(os.environ["VALIDATOR_MAX_AMOUNT"])
+        min_amount = settings.validator_min_amount
+        max_amount = settings.validator_max_amount
         is_valid = min_amount < transaction["amount"] < max_amount
         reason = (
             ""

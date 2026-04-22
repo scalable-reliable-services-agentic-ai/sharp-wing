@@ -1,24 +1,18 @@
-import os
 import json
 from datetime import datetime
 from flask import Flask, jsonify, render_template
-from sqlalchemy import create_engine, func, Column, BigInteger, String, Float, inspect
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import create_engine, func, inspect
+from sqlalchemy.orm import sessionmaker
 import redis
+from src.config import settings
+from src.database.models import Transaction
 
 # --- Environment & DB Setup ---
-DB_USER = os.environ["DB_USER"]
-DB_PASSWORD = os.environ["DB_PASSWORD"]
-DB_HOST = os.environ["DB_HOST"]
-DB_NAME = os.environ["DB_NAME"]
-DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-REDIS_HOST = os.environ["REDIS_HOST"]
+DATABASE_URL = settings.database_url
+REDIS_HOST = settings.redis_host
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-from src.database.models import Base, Transaction
 
 
 # --- Flask App ---
@@ -27,8 +21,7 @@ start_time_dt = datetime.now()
 
 
 def get_redis_connection():
-    redis_port = int(os.environ["REDIS_PORT"])
-    return redis.Redis(host=REDIS_HOST, port=redis_port, decode_responses=True)
+    return redis.Redis(host=REDIS_HOST, port=settings.redis_port, decode_responses=True)
 
 
 @app.route("/")
