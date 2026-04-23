@@ -51,7 +51,7 @@ So far, these elements are created (for now, really simple; it's more a toy exma
     1. Configuring TimeseriesDB (extention of PostgreSQL) [batch layer]
     1. Lambda architecture setup
 
-- [Arash] Database insertion
+- [Arash] Database insertion [DONE]
     1. Create scenarios of different client types, including:
         - spending amounts
         - frequency of their transactions
