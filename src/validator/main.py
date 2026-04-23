@@ -3,12 +3,10 @@ import time
 import asyncio
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import redis.asyncio as aioredis
-from src.config import settings
+from src.config import settings, configure_logging
 import logging
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logger = configure_logging(__name__)
 
 # --- Environment Variables ---
 KAFKA_BROKER = settings.kafka_broker
@@ -29,10 +27,10 @@ async def get_kafka_consumer():
                 value_deserializer=lambda x: json.loads(x.decode("utf-8")),
             )
             await consumer.start()
-            logging.info("AIOKafkaConsumer connected.")
+            logger.info("AIOKafkaConsumer connected.")
             return consumer
         except Exception as e:
-            logging.error(f"Could not connect to Kafka Consumer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka Consumer: {e}. Retrying...")
             await asyncio.sleep(5)
 
 
@@ -44,10 +42,10 @@ async def get_kafka_producer():
                 value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             )
             await producer.start()
-            logging.info("AIOKafkaProducer connected.")
+            logger.info("AIOKafkaProducer connected.")
             return producer
         except Exception as e:
-            logging.error(f"Could not connect to Kafka Producer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka Producer: {e}. Retrying...")
             await asyncio.sleep(5)
 
 
@@ -56,10 +54,10 @@ async def get_redis_connection():
         try:
             r = aioredis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
             await r.ping()
-            logging.info("Async Redis connection established.")
+            logger.info("Async Redis connection established.")
             return r
         except Exception as e:
-            logging.error(f"Could not connect to Redis: {e}. Retrying...")
+            logger.error(f"Could not connect to Redis: {e}. Retrying...")
             await asyncio.sleep(5)
 
 
@@ -111,7 +109,7 @@ async def process_message(message, producer, redis_client):
             )
             await producer.send_and_wait(FINAL_TOPIC, transaction)
             await redis_client.incr("total_validated_realtime")
-            logging.info(f"Validated transaction {transaction['transaction_id']}: OK")
+            logger.info(f"Validated transaction {transaction['transaction_id']}: OK")
         else:
             transaction["current_state"] = "invalid"
             transaction["history"].append(
@@ -128,14 +126,14 @@ async def process_message(message, producer, redis_client):
             pipe.lpush("recent_invalid_transactions", json.dumps(transaction))
             pipe.ltrim("recent_invalid_transactions", 0, 99)
             await pipe.execute()
-            logging.warning(
+            logger.warning(
                 f"Validated transaction {transaction['transaction_id']}: INVALID - {reason}"
             )
 
     except json.JSONDecodeError as e:
-        logging.error(f"Failed to decode message: {message.value}. Error: {e}")
+        logger.error(f"Failed to decode message: {message.value}. Error: {e}")
     except Exception as e:
-        logging.error(f"An unexpected error occurred while processing message: {e}")
+        logger.error(f"An unexpected error occurred while processing message: {e}")
 
 
 # --- Main Application Runner ---
@@ -145,7 +143,7 @@ async def main():
     producer = await get_kafka_producer()
     redis_client = await get_redis_connection()
 
-    logging.info(f"Validator starting. Consuming from topic: {IN_TOPIC}")
+    logger.info(f"Validator starting. Consuming from topic: {IN_TOPIC}")
     try:
         async for message in consumer:
             # Create a non-blocking task to process each message

@@ -6,12 +6,10 @@ from aiokafka import AIOKafkaConsumer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from src.config import settings
+from src.config import settings, configure_logging
 from src.database.models import Base, Transaction
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logger = configure_logging(__name__)
 
 # --- Environment Variables ---
 BATCH_SIZE = settings.batch_size
@@ -27,10 +25,10 @@ async def get_db_engine():
         try:
             engine = create_async_engine(DATABASE_URL)
             async with engine.connect():
-                logging.info("Database connection established successfully")
+                logger.info("Database connection established successfully")
                 return engine
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Could not connect to database: {e}. Retrying in 5 seconds..."
             )
             await asyncio.sleep(5)
@@ -39,7 +37,7 @@ async def get_db_engine():
 async def setup_database(engine):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logging.info("Table 'transactions' schema created or already exists.")
+    logger.info("Table 'transactions' schema created or already exists.")
     try:
         async with engine.connect() as connection:
             await connection.execute(
@@ -48,9 +46,9 @@ async def setup_database(engine):
                 )
             )
             await connection.commit()
-            logging.info("Ensured 'transactions' is a hypertable.")
+            logger.info("Ensured 'transactions' is a hypertable.")
     except Exception as e:
-        logging.warning(
+        logger.warning(
             f"Failed to create hypertable (this is often fine if it already exists): {e}"
         )
 
@@ -66,10 +64,10 @@ async def get_kafka_consumer():
                 value_deserializer=lambda x: json.loads(x.decode("utf-8")),
             )
             await consumer.start()
-            logging.info(f"Consumer connected to Kafka topic: {KAFKA_TOPIC}")
+            logger.info(f"Consumer connected to Kafka topic: {KAFKA_TOPIC}")
             return consumer
         except Exception as e:
-            logging.error(f"Could not connect to Kafka consumer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...")
             await asyncio.sleep(5)
 
 
@@ -81,7 +79,7 @@ async def main():
 
     buffer = []
     last_flush_time = time.time()
-    logging.info("Starting main processing loop...")
+    logger.info("Starting main processing loop...")
     try:
         while True:
             try:
@@ -107,12 +105,12 @@ async def main():
                         await connection.execute(stmt)
                         await connection.commit()
 
-                    logging.info(f"Flushed {len(buffer)} records to the database.")
+                    logger.info(f"Flushed {len(buffer)} records to the database.")
                     buffer = []
                     last_flush_time = time.time()
 
             except Exception as e:
-                logging.error(f"An error occurred during the batch insert loop: {e}")
+                logger.error(f"An error occurred during the batch insert loop: {e}")
                 buffer = []  # Clear buffer on error
     finally:
         await consumer.stop()
