@@ -7,7 +7,9 @@ dependencies = [
     "flask-sse",
     "redis",
     "pyyaml",
-    "jinja2"
+    "jinja2",
+    "faker",
+    "psycopg2-binary"
 ]
 
 [project.optional-dependencies]

@@ -15,6 +15,11 @@
             "mac_address": {{ mac_address|tojson }},
             "fingerprint": {{ fingerprint|tojson }},
             "session_id": {{ session_id|tojson }}
+        },
+        "metadata": {
+            "is_fraud": {{ is_fraud|tojson }},
+            "fraud_reason": {{ fraud_reason|tojson }},
+            "client_type": {{ client_type|tojson }}
         }
     }
 }
