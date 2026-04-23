@@ -46,10 +46,28 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 
 ## TODO
 
-- [Miki] Database setup and queue update
-    1. Switching from Redis to Kafka [speed layer]
-    1. Configuring TimeseriesDB (extention of PostgreSQL) [batch layer]
-    1. Lambda architecture setup
+- [DONE] [Miki] Database setup and queue update
+    1. [DONE] Switching from Redis to Kafka [speed layer]
+    1. [DONE] Configuring TimeseriesDB (extention of PostgreSQL) [batch layer]
+    1. [DONE] Lambda architecture setup
+
+- [NotAssignedYet] Architecture remaining work:
+    1. Logger centralisation
+        - Use grafana
+    1. Error handling
+    1. System status/state monitoring
+    1. Bringing back control panel
+    1. Kafka topics cleaning
+    1. Switch to Kubernetes
+    1. Implementing scalability (now everything is at fixed size defined in compose.yaml)
+
+- [NotAssignedYet] system modules / services
+    1. Validator to upgrade/adjust
+    1. Simple anomaly detection
+    1. Advanced anomaly detection with LLM
+    1. MCP server with tools for anomaly detectors
+    1. Human in the loop veryfication service
+
 
 - [Arash] Database insertion
     1. Create scenarios of different client types, including:
