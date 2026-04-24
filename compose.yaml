@@ -61,6 +61,10 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     container_name: timescaledb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fraud_detection_db
     ports:
       - "5432:5432"
     networks:
@@ -166,24 +170,6 @@ services:
       timescaledb:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  control_panel:
-    build:
-      context: .
-      dockerfile: docker/control_panel.Dockerfile
-    ports:
-      - "5003:5003"
-    networks:
-      - frontend
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      redis:
-        condition: service_healthy
-      timescaledb:
         condition: service_healthy
 
 volumes:
