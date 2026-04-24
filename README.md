@@ -69,7 +69,7 @@ So far, these elements are created (for now, really simple; it's more a toy exma
     1. Human in the loop veryfication service
 
 
-- [Arash] Database insertion
+- [Arash] Database insertion [DONE]
     1. Create scenarios of different client types, including:
         - spending amounts
         - frequency of their transactions
