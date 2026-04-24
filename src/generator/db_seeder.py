@@ -19,7 +19,7 @@ fake = Faker()
 
 # PostgreSQL connection configuration
 DB_CONFIG = {
-    "dbname": "fraud_detection_db",
+    "dbname": "transactions",
     "user": "postgres",
     "password": "password",
     "host": "localhost",
