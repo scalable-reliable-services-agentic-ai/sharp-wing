@@ -12,6 +12,7 @@ logger = configure_logging(__name__)
 KAFKA_BROKER = settings.kafka_broker
 KAFKA_TOPIC = settings.kafka_raw_transactions_topic
 
+
 def fetch_existing_clients():
     """Fetches a pool of existing clients from PostgreSQL/TimescaleDB on startup"""
     try:
@@ -34,6 +35,7 @@ def fetch_existing_clients():
     except Exception as e:
         logger.error(f"Failed to fetch clients from Database: {e}")
         return []
+
 
 def apply_persona(t, client_type):
     """Applies behavior patterns and explicit fraud labeling to a transaction"""
@@ -72,6 +74,7 @@ def apply_persona(t, client_type):
 
     return t
 
+
 # --- Connection Handlers ---
 async def get_kafka_producer():
     while True:
@@ -86,6 +89,7 @@ async def get_kafka_producer():
         except Exception as e:
             logger.error(f"Could not connect to Kafka: {e}. Retrying...")
             await asyncio.sleep(5)
+
 
 # --- Main Application ---
 async def main():
@@ -104,7 +108,8 @@ async def main():
                     ctype = client["client_type"]
                     cid = client["client_id"]
                 else:
-                    persona_types = ["Standard", "VIP", "Corporate", "NightOwl", "Fraud_StolenCard", "Fraud_Smurfing", "Fraud_ATO", "Fraud_ImpossibleTravel"]
+                    persona_types = ["Standard", "VIP", "Corporate", "NightOwl", "Fraud_StolenCard", "Fraud_Smurfing",
+                                     "Fraud_ATO", "Fraud_ImpossibleTravel"]
                     weights = [0.35, 0.10, 0.15, 0.20, 0.05, 0.05, 0.05, 0.05]
                     ctype = random.choices(persona_types, weights=weights, k=1)[0]
                     cid = random.randint(100_000, 999_999)
@@ -115,13 +120,15 @@ async def main():
                 transaction = apply_persona(transaction, ctype)
 
                 # Fetch data based on the right branch's formatting
-                transaction_data = transaction.get_kafka_message() if hasattr(transaction, 'get_kafka_message') else transaction.generate_transaction_data()
+                transaction_data = transaction.get_kafka_message() if hasattr(transaction,
+                                                                              'get_kafka_message') else transaction.generate_transaction_data()
 
                 await producer.send_and_wait(KAFKA_TOPIC, transaction_data)
 
                 # Log success or fraud
                 if getattr(transaction, 'is_fraud', False) or transaction_data.get("is_fraud"):
-                    logger.warning(f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}")
+                    logger.warning(
+                        f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}")
                 else:
                     logger.info(f"Produced OK ({transaction_data['transaction_id']})")
 
@@ -135,6 +142,7 @@ async def main():
                 await asyncio.sleep(5)
     finally:
         await producer.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
