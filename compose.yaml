@@ -43,7 +43,6 @@ services:
     networks:
       - backend
     env_file:
-      - common.env
       - .env
     command: >
       bash -c "
@@ -73,7 +72,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     env_file:
-      - common.env
       - .env
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -106,7 +104,6 @@ services:
     networks:
       - backend
     env_file:
-      - common.env
       - .env
     depends_on:
       kafka:
@@ -123,7 +120,6 @@ services:
     networks:
       - backend
     env_file:
-      - common.env
       - .env
     depends_on:
       kafka:
@@ -142,7 +138,6 @@ services:
     networks:
       - backend
     env_file:
-      - common.env
       - .env
     depends_on:
       kafka:
@@ -162,7 +157,6 @@ services:
       - frontend
       - backend
     env_file:
-      - common.env
       - .env
     depends_on:
       kafka-topics-creator:

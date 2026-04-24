@@ -19,7 +19,7 @@ def fetch_existing_clients():
         logger.info("Connecting to Database to load existing clients...")
         # Using getattr as a safety net in case settings doesn't have these exact names yet
         conn = psycopg2.connect(
-            host=getattr(settings, "postgres_host", "timescaledb"),
+            host=settings.db_host,
             port=getattr(settings, "postgres_port", 5432),
             dbname=getattr(settings, "postgres_db", "fraud_detection_db"),
             user=getattr(settings, "postgres_user", "postgres"),
