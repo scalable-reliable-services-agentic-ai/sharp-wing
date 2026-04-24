@@ -27,7 +27,7 @@ def fetch_existing_clients():
         )
         cursor = conn.cursor()
         # Fetch up to 5000 distinct clients
-        cursor.execute("SELECT DISTINCT sender_id, client_type FROM transactions LIMIT 5000;")
+        cursor.execute("SELECT DISTINCT client_id, client_type FROM transactions LIMIT 5000;")
         clients = [{"client_id": row[0], "client_type": row[1]} for row in cursor.fetchall()]
         conn.close()
         logger.info(f"Successfully loaded {len(clients)} existing clients.")

@@ -1,9 +1,10 @@
 import os
 import sys
+import json
 
 # This dynamically finds the project root and adds it to Python's path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../../")) # Adjusts if saved in src/generator
+project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 sys.path.insert(0, current_dir)
 sys.path.insert(0, project_root)
 
@@ -17,7 +18,6 @@ from src.generator.transaction import Transaction
 fake = Faker()
 
 # PostgreSQL connection configuration
-# we have to update these with our actual Docker or Local Postgres credentials
 DB_CONFIG = {
     "dbname": "fraud_detection_db",
     "user": "postgres",
@@ -31,64 +31,67 @@ def setup_db():
     conn = psycopg2.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
+    # Create the standard table
     cursor.execute('''
                    CREATE TABLE IF NOT EXISTS transactions
                    (
                        transaction_id
-                       BIGINT
-                       PRIMARY
-                       KEY,
-                       sender_id
+                       BIGINT,
+                       client_id
                        BIGINT,
                        receiver_id
                        BIGINT,
-                       timestamp
-                       TIMESTAMP,
+                       timestamp_iso
+                       TEXT,
                        transaction_type
-                       VARCHAR
+                       TEXT,
+                       channel
+                       TEXT,
+                       amount
+                       DOUBLE
+                       PRECISION,
+                       currency
+                       TEXT,
+                       location
+                       TEXT,
+                       ip_address
+                       TEXT,
+                       mac_address
+                       TEXT,
+                       fingerprint
+                       TEXT,
+                       session_id
+                       TEXT,
+                       timestamp_ms
+                       BIGINT,
+                       current_state
+                       TEXT,
+                       history
+                       JSONB,
+                       client_type
+                       TEXT,
+                       is_fraud
+                       BOOLEAN,
+                       fraud_reason
+                       TEXT,
+                       PRIMARY
+                       KEY
                    (
-                       50
-                   ),
-                       channel VARCHAR
-                   (
-                       50
-                   ),
-                       amount DOUBLE PRECISION,
-                       currency VARCHAR
-                   (
-                       10
-                   ),
-                       status VARCHAR
-                   (
-                       50
-                   ),
-                       geolocation VARCHAR
-                   (
-                       100
-                   ),
-                       ip_address VARCHAR
-                   (
-                       50
-                   ),
-                       mac_address VARCHAR
-                   (
-                       50
-                   ),
-                       fingerprint VARCHAR
-                   (
-                       100
-                   ),
-                       session_id VARCHAR
-                   (
-                       100
-                   ),
-                       is_flagged_fraud BOOLEAN,
-                       client_type VARCHAR
-                   (
-                       50
+                       transaction_id,
+                       timestamp_ms
                    )
                        )
                    ''')
+
+    # Convert it to a TimescaleDB Hypertable
+    # We partition it based on the timestamp_ms column.
+    # chunk_time_interval is set to 86400000 ms (1 day) which is optimal for daily data.
+    cursor.execute('''
+        SELECT create_hypertable('transactions', 'timestamp_ms', 
+        chunk_time_interval => 86400000, 
+        if_not_exists => TRUE);
+    ''')
+
     conn.commit()
     return conn
 
@@ -124,19 +127,17 @@ def generate_client_data(num_clients):
 def generate_transactions(clients, target_rows):
     transactions_data = []
     base_time = datetime.now() - timedelta(days=30)
-
-    # a counter to guarantee 100% unique transaction IDs
     unique_id_counter = 100_000
 
     while len(transactions_data) < target_rows:
         client = random.choice(clients)
         ctype = client["client_type"]
         is_fraud = False
+        fraud_reason = "None"
 
         t = Transaction()
-        t.sender_id = client["client_id"]
+        t.sender_id = client["client_id"]  # Internal mapping in transaction.py
 
-        # Ensure the ID is totally unique by appending our counter
         day_code = int(datetime.now().strftime("%Y%m%d"))
         t.transaction_id = (day_code * 1_000_000) + unique_id_counter
         unique_id_counter += 1
@@ -166,48 +167,53 @@ def generate_transactions(clients, target_rows):
             t.geolocation = get_approx_geolocation("GLOBAL")
             tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
             is_fraud = True
+            fraud_reason = "Stolen Card Pattern"
 
         elif ctype == "Fraud_Smurfing":
             t.amount = round(random.uniform(9900.0, 9999.0), 2)
             t.geolocation = get_approx_geolocation("GLOBAL")
             tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 17))
             is_fraud = True
+            fraud_reason = "Smurfing Pattern"
 
         elif ctype == "Fraud_ATO":
             t.amount = round(random.uniform(20000.0, 50000.0), 2)
             t.geolocation = get_approx_geolocation("GLOBAL")
             tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.choice([2, 3, 4]))
             is_fraud = True
+            fraud_reason = "Account Takeover (ATO)"
 
         elif ctype == "Fraud_ImpossibleTravel":
             t1_time = base_time + timedelta(days=random.randint(0, 30), hours=10)
             t.amount = round(random.uniform(10.0, 50.0), 2)
             t.geolocation = get_approx_geolocation("IT")
-            t.timestamp = t1_time.isoformat()
+            t.timestamp = t1_time  # Passing datetime object, not string!
 
             data1 = t.generate_transaction_data()
-            transactions_data.append((data1, False, ctype))
+            transactions_data.append((data1, False, ctype, "None"))
 
             t2 = Transaction()
             t2.sender_id = client["client_id"]
-
-            # OVERRIDE: Ensure the second transaction ID is also totally unique
             t2.transaction_id = (day_code * 1_000_000) + unique_id_counter
             unique_id_counter += 1
-
             t2_time = t1_time + timedelta(minutes=30)
             t2.amount = round(random.uniform(5000.0, 15000.0), 2)
             t2.geolocation = get_approx_geolocation("SE_ASIA")
-            t2.timestamp = t2_time.isoformat()
+            t2.timestamp = t2_time  # Passing datetime object, not string!
 
             data2 = t2.generate_transaction_data()
-            transactions_data.append((data2, True, ctype))
+            transactions_data.append((data2, True, ctype, "Impossible Travel"))
             continue
 
-        t.timestamp = tx_time.isoformat()
+        t.timestamp = tx_time  # Passing datetime object, not string!
+
+        # Hardcode fraud label into object for generator compatibility
+        t.is_fraud = is_fraud
+        t.fraud_reason = fraud_reason
+        t.client_type = ctype
 
         data = t.generate_transaction_data()
-        transactions_data.append((data, is_fraud, ctype))
+        transactions_data.append((data, is_fraud, ctype, fraud_reason))
 
     return transactions_data
 
@@ -215,21 +221,21 @@ def generate_transactions(clients, target_rows):
 def load_to_db(conn, transactions_data):
     cursor = conn.cursor()
     formatted_rows = []
-    for data, is_fraud, ctype in transactions_data:
+    for data, is_fraud, ctype, fraud_reason in transactions_data:
+        # Extract keys based on the updated transaction.py dictionary
         formatted_rows.append((
-            data["transaction_id"], data["sender_id"], data["receiver_id"],
-            data["timestamp"], data["transaction_type"], data["channel"],
-            data["amount"], data["currency"], data["status"],
-            data["geolocation"], data["ip_address"], data["mac_address"],
-            data["fingerprint"], data["session_id"], is_fraud, ctype
+            data["transaction_id"], data["client_id"], data["receiver_id"],
+            data["timestamp_iso"], data["transaction_type"], data["channel"],
+            data["amount"], data["currency"], data["location"], data["ip_address"],
+            data["mac_address"], data["fingerprint"], data["session_id"],
+            data["timestamp_ms"], "PENDING", json.dumps([]), ctype, is_fraud, fraud_reason
         ))
 
-    # PostgreSQL uses %s instead of ? for parameter substitution
-    # execute_values is much faster than executemany for bulk inserts in Postgres
     insert_query = '''
-                   INSERT INTO transactions (transaction_id, sender_id, receiver_id, timestamp, transaction_type, \
-                                             channel, amount, currency, status, geolocation, ip_address, \
-                                             mac_address, fingerprint, session_id, is_flagged_fraud, client_type) \
+                   INSERT INTO transactions (transaction_id, client_id, receiver_id, timestamp_iso, transaction_type, \
+                                             channel, amount, currency, location, ip_address, mac_address, \
+                                             fingerprint, session_id, timestamp_ms, current_state, history, \
+                                             client_type, is_fraud, fraud_reason) \
                    VALUES %s \
                    '''
     execute_values(cursor, insert_query, formatted_rows)
@@ -245,7 +251,7 @@ if __name__ == "__main__":
     clients = generate_client_data(num_clients=5000)
 
     print("Generating transactions based on personas...")
-    transactions_data = generate_transactions(clients, target_rows=150000)
+    transactions_data = generate_transactions(clients, target_rows=15000)  # Lowered to 15k for faster local seeding
 
     print("Loading data into Database...")
     load_to_db(conn, transactions_data)
