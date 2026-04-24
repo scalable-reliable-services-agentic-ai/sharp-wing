@@ -1,36 +1,152 @@
 services:
-  redis:
-    image: redis:6.2-alpine
-    ports:
-      - "6379:6379"
-
-  postgres:
-    image: postgres:15-alpine
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    # ports:
+    #   - "9092:9092"
+    networks:
+      - backend
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fraud_detection_db
+      CLUSTER_ID: 'MkU1qYWLT4yv1aB-b3G9NA'
+      KAFKA_CLUSTER_ID: 'MkU1qYWLT4yv1aB-b3G9NA'
+      KAFKA_NODE_ID: 1
+
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT_INTERNAL'
+
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:29092 --version || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    mem_limit: 2g
+
+  kafka-topics-creator:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...' &&
+        cub kafka-ready -b kafka:29092 1 30 &&
+        echo 'Kafka is ready!' &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_RAW_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_VALIDATED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_FINAL_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+        echo 'Topics created!'
+      "
+
+  # Databases
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: timescaledb
     ports:
       - "5432:5432"
+    networks:
+      - backend
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=512MB"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - common.env
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 2g
 
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  # Application Services
   generator:
     build:
       context: .
       dockerfile: docker/generator.Dockerfile
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
     depends_on:
-      - redis
+      kafka:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
 
   validator:
     build:
       context: .
       dockerfile: docker/validator.Dockerfile
     deploy:
-      replicas: 2 # Start with two, can be scaled with `docker-compose up --scale validator=N`
+      replicas: 2
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
     depends_on:
-      - redis
-      - postgres
+      kafka:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy # <-- Replaced postgres dependency
+
+  batch-ingestor:
+    build:
+      context: .
+      dockerfile: docker/batch_ingestor.Dockerfile
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
 
   reporter:
     build:
@@ -38,19 +154,45 @@ services:
       dockerfile: docker/reporter.Dockerfile
     ports:
       - "5000:5000"
+    networks:
+      - frontend
+      - backend
+    env_file:
+      - common.env
+      - .env
     depends_on:
-      - redis
-      - postgres
+      kafka-topics-creator:
+        condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  control_panel:
+  control_panel: # <-- Added your control panel block back!
     build:
       context: .
       dockerfile: docker/control_panel.Dockerfile
     ports:
       - "5003:5003"
+    networks:
+      - frontend
+      - backend
+    env_file:
+      - common.env
+      - .env
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
 
 volumes:
+  kafka_data:
   postgres_data:
+  redis_data:
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge

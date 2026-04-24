@@ -1,59 +1,66 @@
-"""Reporter service."""
-
-import sys
-import os
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from flask import Flask, render_template, jsonify
-from flask_sse import sse
-import redis
-import yaml
 import json
 from datetime import datetime
-import threading
+from flask import Flask, jsonify, render_template
+from sqlalchemy import create_engine, func, inspect
+from sqlalchemy.orm import sessionmaker
+import redis
+from src.config import settings
+from src.database.models import Transaction
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
+# --- Environment & DB Setup ---
+DATABASE_URL = settings.database_url
+REDIS_HOST = settings.redis_host
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def load_config():
-    with open("config/config.yaml", "r") as f:
-        return yaml.safe_load(f)
-
-
-config = load_config()
-
-# Configure SSE to use Redis
-app.config["REDIS_URL"] = f"redis://{config['redis']['host']}:{config['redis']['port']}"
-app.register_blueprint(sse, url_prefix="/stream")
-
-# Connect to Redis
-r = redis.Redis(
-    host=config["redis"]["host"], port=config["redis"]["port"], decode_responses=True
-)
-
-# App start time
+# --- Flask App ---
+app = Flask(__name__)
 start_time_dt = datetime.now()
 
-# Redis keys from config
-correct_key = config["redis"]["correct_transactions_key"]
-invalid_key = config["redis"]["invalid_transactions_key"]
-invalid_list = config["redis"]["invalid_transactions_list"]
-update_channel = config["redis"]["update_channel"]
+
+def get_redis_connection():
+    return redis.Redis(host=REDIS_HOST, port=settings.redis_port, decode_responses=True)
 
 
 @app.route("/")
 def home():
-    """Serves the main dashboard page."""
     return render_template("home.html")
 
 
 @app.route("/data")
 def data():
-    """API endpoint to get current statistics."""
-    correct_count = int(r.get(correct_key) or 0)
-    invalid_count = int(r.get(invalid_key) or 0)
-    total_verified = correct_count + invalid_count
+    historical_total = 0
+    historical_invalid = 0
+    try:
+        db = SessionLocal()
+        # Check if the table exists first
+        inspector = inspect(db.get_bind())
+        if inspector.has_table("transactions"):
+            historical_total = (
+                db.query(func.count(Transaction.transaction_id)).scalar() or 0
+            )
+            historical_invalid = (
+                db.query(func.count(Transaction.transaction_id))
+                .filter(Transaction.current_state == "invalid")
+                .scalar()
+                or 0
+            )
+    except Exception:
+        # This will catch connection errors if the DB isn't fully ready
+        pass  # Defaults will be used
+    finally:
+        if "db" in locals():
+            db.close()
+
+    redis_client = get_redis_connection()
+    realtime_validated = int(redis_client.get("total_validated_realtime") or 0)
+    realtime_invalid = int(redis_client.get("total_invalid_realtime") or 0)
+
+    total_verified = historical_total + realtime_validated + realtime_invalid
+    invalid_count = historical_invalid + realtime_invalid
+    correct_count = total_verified - invalid_count
 
     time_elapsed = (datetime.now() - start_time_dt).total_seconds()
     avg_tps = total_verified / time_elapsed if time_elapsed > 0 else 0
@@ -70,25 +77,11 @@ def data():
 
 @app.route("/invalid")
 def invalid():
-    """Serves the page for invalid transactions."""
-    transactions_json = r.lrange(invalid_list, 0, -1)
+    redis_client = get_redis_connection()
+    transactions_json = redis_client.lrange("recent_invalid_transactions", 0, 19)
     transactions = [json.loads(t) for t in transactions_json]
     return render_template("invalid.html", transactions=transactions)
 
 
-def listen_for_updates():
-    """Listens to Redis Pub/Sub and sends SSE events."""
-    pubsub = r.pubsub()
-    pubsub.subscribe(update_channel)
-    for message in pubsub.listen():
-        if message["type"] == "message":
-            with app.app_context():
-                sse.publish({"status": "updated"}, type="data_update")
-
-
 if __name__ == "__main__":
-    # Run the Redis listener in a background thread
-    listener_thread = threading.Thread(target=listen_for_updates, daemon=True)
-    listener_thread.start()
-    # Start the Flask app
-    app.run(host="0.0.0.0", port=5000, threaded=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

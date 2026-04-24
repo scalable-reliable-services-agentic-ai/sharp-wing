@@ -1,27 +1,36 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Invalid Transactions</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
 </head>
 <body>
-    <h1>Invalid Transactions</h1>
-    <a href="/">Back to Dashboard</a>
-    <hr>
-    <table>
-        <tr>
-            <th>Transaction ID</th>
-            <th>Value</th>
-            <th>Reason</th>
-        </tr>
-        {% for t in transactions %}
-            <tr>
-                <td>{{ t.transaction.public.transaction_id }}</td>
-                <td>{{ t.transaction.public.amount }}</td>
-                <td>{{ t.reason }}</td>
-            </tr>
-        {% endfor %}
-    </table>
+    <div class="container mt-5">
+        <h1 class="mb-4">Recent Invalid Transactions</h1>
+        <a href="/" class="btn btn-primary mb-3">Back to Dashboard</a>
+        <p>Showing the last 20 invalid transactions.</p>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Transaction ID</th>
+                    <th>Amount</th>
+                    <th>Reason</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in transactions %}
+                <tr>
+                    <td>{{ tx.transaction_id }}</td>
+                    <td>{{ tx.amount }}</td>
+                    {# The reason is now stored inside the history array #}
+                    <td>{{ tx.history[0].reason if tx.history and tx.history[0].reason else 'N/A' }}</td>
+                    <td>{{ tx.timestamp_iso }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </body>
 </html>
