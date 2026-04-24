@@ -6,18 +6,18 @@ help:
 	@echo "Available commands:"
 	@echo "  check_uv     - Check if uv is installed."
 	@echo "  venv         - Create a virtual environment and install dependencies."
+	@echo "  check_venv   - check if venv exists."
 	@echo "  requirements - Install/sync dependencies from pyproject.toml."
-	@echo "  lint         - Run linting checks."
-	@echo "  format       - Format the code."
-	@echo "  check        - Format the code and then run linting checks."
 	@echo "  clean        - Remove virtual environment and cache files."
+	@echo "  format       - Format the code."
 	@echo "  build        - Build Docker images."
 	@echo "  run          - Run Docker containers in detached mode."
 	@echo "  setup        - Build and run Docker containers."
 	@echo "  logs         - Show logs from Docker containers."
 	@echo "  stop         - Stop Docker containers."
 	@echo "  destroy      - Destroy Docker containers."
-	@echo "  clean-docker - Stop and destroy Docker containers."
+	@echo "  clean-docker - Stop and destroy Docker containers, and volumes."
+	@echo "  reset        - Reset the entire environment (clean-docker + setup)."
 
 # =============================================================================
 # Development Environment Setup
@@ -54,6 +54,7 @@ clean:
 	@find . -type f -name "*.py[co]" -delete
 	@find . -type d -name "__pycache__" -delete
 	@find . -maxdepth 1 -type f -name "uv.lock" -delete
+	@find . -maxdepth 3 -type d -name "*.egg-info" -exec rm -rf {} +
 	@rm -rf .ruff_cache
 	@echo "venv deleted, cache files removed"
 
@@ -73,7 +74,15 @@ format: check_venv
 # Docker Commands
 # =============================================================================
 
-.PHONY: build run setup logs stop destroy clean-docker
+.PHONY: build run setup logs stop destroy clean-docker reset
+
+clean-db: clean-docker
+
+reset:
+	@echo "Resetting the entire environment..."
+	@make clean-docker
+	@make setup
+	@echo "Environment has been reset."
 
 build:
 	@echo "Building Docker images..."

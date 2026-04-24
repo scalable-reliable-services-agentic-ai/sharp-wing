@@ -1,43 +1,39 @@
+import json
+import random
+import asyncio
+import psycopg2
+from aiokafka import AIOKafkaProducer
+from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
 
-import redis
-import psycopg2
-import random
-import time
-import yaml
-import logging
-from jinja2 import Environment, FileSystemLoader
+logger = configure_logging(__name__)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+# --- Environment & Constants ---
+KAFKA_BROKER = settings.kafka_broker
+KAFKA_TOPIC = settings.kafka_raw_transactions_topic
 
-
-def load_config():
-    with open("config/config.yaml", "r") as f:
-        return yaml.safe_load(f)
-
-
-def fetch_existing_clients(config):
-    """Fetches a pool of existing clients from PostgreSQL on startup"""
+def fetch_existing_clients():
+    """Fetches a pool of existing clients from PostgreSQL/TimescaleDB on startup"""
     try:
-        logging.info("Connecting to PostgreSQL to load existing clients...")
+        logger.info("Connecting to Database to load existing clients...")
+        # Using getattr as a safety net in case settings doesn't have these exact names yet
         conn = psycopg2.connect(
-            host=config["postgres"]["host"],
-            port=config["postgres"]["port"],
-            dbname=config["postgres"]["dbname"],
-            user=config["postgres"]["user"],
-            password=config["postgres"]["password"]
+            host=getattr(settings, "postgres_host", "timescaledb"),
+            port=getattr(settings, "postgres_port", 5432),
+            dbname=getattr(settings, "postgres_db", "fraud_detection_db"),
+            user=getattr(settings, "postgres_user", "postgres"),
+            password=getattr(settings, "postgres_password", "password")
         )
         cursor = conn.cursor()
         # Fetch up to 5000 distinct clients
         cursor.execute("SELECT DISTINCT sender_id, client_type FROM transactions LIMIT 5000;")
         clients = [{"client_id": row[0], "client_type": row[1]} for row in cursor.fetchall()]
         conn.close()
-        logging.info(f"Successfully loaded {len(clients)} existing clients.")
+        logger.info(f"Successfully loaded {len(clients)} existing clients.")
         return clients
     except Exception as e:
-        logging.error(f"Failed to fetch clients from PostgreSQL: {e}")
+        logger.error(f"Failed to fetch clients from Database: {e}")
         return []
-
 
 def apply_persona(t, client_type):
     """Applies behavior patterns and explicit fraud labeling to a transaction"""
@@ -76,73 +72,69 @@ def apply_persona(t, client_type):
 
     return t
 
-
-def main():
-    config = load_config()
-    r = redis.Redis(host=config["redis"]["host"], port=config["redis"]["port"], decode_responses=True)
-
-    env = Environment(loader=FileSystemLoader("src/generator/templates"))
-    template = env.get_template("transaction_template.json.j2")
-
-    queue_name = config["redis"]["transaction_queue"]
-    tps_key = config["redis"]["generator_tps_key"]
-    invalid_perc_key = config["redis"]["generator_invalid_perc_key"]
-
-    # Load existing clients from the database once on startup
-    existing_clients = fetch_existing_clients(config)
-
-    logging.info("Generator starting.")
+# --- Connection Handlers ---
+async def get_kafka_producer():
     while True:
         try:
-            target_tps = float(r.get(tps_key) or config["generator"]["default_tps"])
-            invalid_percentage = int(r.get(invalid_perc_key) or config["generator"]["default_invalid_percentage"])
-        except (ValueError, TypeError):
-            target_tps = config["generator"]["default_tps"]
-            invalid_percentage = config["generator"]["default_invalid_percentage"]
+            producer = AIOKafkaProducer(
+                bootstrap_servers=KAFKA_BROKER,
+                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            )
+            await producer.start()
+            logger.info("AIOKafkaProducer connected.")
+            return producer
+        except Exception as e:
+            logger.error(f"Could not connect to Kafka: {e}. Retrying...")
+            await asyncio.sleep(5)
 
-        avg_sleep = 1.0 / target_tps
+# --- Main Application ---
+async def main():
+    # Load existing clients from the database once on startup
+    existing_clients = fetch_existing_clients()
 
-        # Decide: Use existing client (80%) or generate a new one (20%)
-        if existing_clients and random.random() < 0.8:
-            client = random.choice(existing_clients)
-            ctype = client["client_type"]
-            cid = client["client_id"]
-        else:
-            persona_types = ["Standard", "VIP", "Corporate", "NightOwl", "Fraud_StolenCard", "Fraud_Smurfing",
-                             "Fraud_ATO", "Fraud_ImpossibleTravel"]
-            weights = [0.35, 0.10, 0.15, 0.20, 0.05, 0.05, 0.05, 0.05]
-            ctype = random.choices(persona_types, weights=weights, k=1)[0]
-            cid = random.randint(100_000, 999_999)
+    producer = await get_kafka_producer()
+    logger.info(f"Generator starting, producing to topic '{KAFKA_TOPIC}'.")
 
-        # Create transaction and apply the persona and fraud labels
-        t = Transaction()
-        t.sender_id = cid
-        t = apply_persona(t, ctype)
-        transaction_data = t.generate_transaction_data()
+    try:
+        while True:
+            try:
+                # Decide: Use existing client (80%) or generate a new one (20%)
+                if existing_clients and random.random() < 0.8:
+                    client = random.choice(existing_clients)
+                    ctype = client["client_type"]
+                    cid = client["client_id"]
+                else:
+                    persona_types = ["Standard", "VIP", "Corporate", "NightOwl", "Fraud_StolenCard", "Fraud_Smurfing", "Fraud_ATO", "Fraud_ImpossibleTravel"]
+                    weights = [0.35, 0.10, 0.15, 0.20, 0.05, 0.05, 0.05, 0.05]
+                    ctype = random.choices(persona_types, weights=weights, k=1)[0]
+                    cid = random.randint(100_000, 999_999)
 
-        # Old validation logic (randomly breaking fields to test schema validation)
-        if random.uniform(0, 100) < invalid_percentage:
-            if random.random() < 0.5:
-                transaction_data["amount"] = transaction_data["amount"] * -100
-                transaction_data["is_fraud"] = True
-                transaction_data["fraud_reason"] = "Schema Validation Failed: Negative Amount"
-            else:
-                field = random.choice(["sender_id", "receiver_id", "ip_address"])
-                transaction_data[field] = ""
-                transaction_data["is_fraud"] = True
-                transaction_data["fraud_reason"] = f"Schema Validation Failed: Missing {field}"
+                # Generate transaction and apply persona
+                transaction = Transaction()
+                transaction.sender_id = cid
+                transaction = apply_persona(transaction, ctype)
 
-        transaction_json_str = template.render(transaction_data)
-        r.lpush(queue_name, transaction_json_str)
+                # Fetch data based on the right branch's formatting
+                transaction_data = transaction.get_kafka_message() if hasattr(transaction, 'get_kafka_message') else transaction.generate_transaction_data()
 
-        if transaction_data.get("is_fraud"):
-            logging.warning(
-                f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data['fraud_reason']}")
-        else:
-            logging.info(f"Produced OK ({transaction_data['transaction_id']})")
+                await producer.send_and_wait(KAFKA_TOPIC, transaction_data)
 
-        time.sleep(random.uniform(avg_sleep * 0.8, avg_sleep * 1.2))
+                # Log success or fraud
+                if getattr(transaction, 'is_fraud', False) or transaction_data.get("is_fraud"):
+                    logger.warning(f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}")
+                else:
+                    logger.info(f"Produced OK ({transaction_data['transaction_id']})")
 
+                # Sleep for a random interval based on settings
+                min_sleep = settings.generator_min_sleep_ms / 1000.0
+                max_sleep = settings.generator_max_sleep_ms / 1000.0
+                await asyncio.sleep(random.uniform(min_sleep, max_sleep))
+
+            except Exception as e:
+                logger.error(f"An error occurred in the main loop: {e}")
+                await asyncio.sleep(5)
+    finally:
+        await producer.stop()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

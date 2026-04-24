@@ -1,15 +1,19 @@
-
 [project]
 name = "transaction_fraud_detection_system"
 version = "0.1.0"
 dependencies = [
+    "logging",
     "flask",
     "flask-sse",
-    "redis",
+    "redis[async]",
     "pyyaml",
     "jinja2",
     "faker",
-    "psycopg2-binary"
+    "aiokafka",
+    "asyncpg",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "pydantic-settings"
 ]
 
 [project.optional-dependencies]
