@@ -17,6 +17,9 @@ class Transaction:
         self.mac_address = f"{random.randint(0, 255):02x}:{random.randint(0, 255):02x}:{random.randint(0, 255):02x}:{random.randint(0, 255):02x}:{random.randint(0, 255):02x}:{random.randint(0, 255):02x}"
         self.fingerprint = str(uuid.uuid4())
         self.session_id = str(uuid.uuid4())
+        self.is_fraud = False
+        self.fraud_reason = "None"
+        self.client_type = "Unknown"
 
     def _create_transaction_id(self):
         day_code = datetime.now().strftime("%Y%m%d")
@@ -63,6 +66,9 @@ class Transaction:
             "mac_address": self.mac_address,
             "fingerprint": self.fingerprint,
             "session_id": self.session_id,
+            "is_fraud": self.is_fraud,
+            "fraud_reason": self.fraud_reason,
+            "client_type": self.client_type
         }
 
     def get_kafka_message(self):

@@ -61,22 +61,18 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     container_name: timescaledb
+    env_file:
+      - common.env
+      - .env
     ports:
       - "5432:5432"
     networks:
       - backend
-    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=512MB"]
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    env_file:
-      - common.env
-      - .env
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d transactions" ]
+      interval: 5s
       timeout: 5s
       retries: 5
-    mem_limit: 2g
 
   redis:
     image: redis:6.2-alpine
@@ -129,7 +125,7 @@ services:
       redis:
         condition: service_healthy
       timescaledb:
-        condition: service_healthy # <-- Replaced postgres dependency
+        condition: service_healthy
 
   batch-ingestor:
     build:
@@ -153,7 +149,7 @@ services:
       context: .
       dockerfile: docker/reporter.Dockerfile
     ports:
-      - "5000:5000"
+      - "5005:5000"
     networks:
       - frontend
       - backend
@@ -166,24 +162,6 @@ services:
       timescaledb:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  control_panel: # <-- Added your control panel block back!
-    build:
-      context: .
-      dockerfile: docker/control_panel.Dockerfile
-    ports:
-      - "5003:5003"
-    networks:
-      - frontend
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      redis:
-        condition: service_healthy
-      timescaledb:
         condition: service_healthy
 
 volumes:

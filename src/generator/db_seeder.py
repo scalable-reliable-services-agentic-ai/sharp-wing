@@ -1,25 +1,25 @@
 import os
 import sys
-
-# This dynamically finds the project root and adds it to Python's path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../../")) # Adjusts if saved in src/generator
-sys.path.insert(0, current_dir)
-sys.path.insert(0, project_root)
-
+import json
 import psycopg2
 from psycopg2.extras import execute_values
 import random
 from datetime import datetime, timedelta
 from faker import Faker
+
+# Dynamically finds the project root and adds it to Python's path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "../../"))
+sys.path.insert(0, current_dir)
+sys.path.insert(0, project_root)
+
 from src.generator.transaction import Transaction
 
 fake = Faker()
 
 # PostgreSQL connection configuration
-# we have to update these with our actual Docker or Local Postgres credentials
 DB_CONFIG = {
-    "dbname": "fraud_detection_db",
+    "dbname": "transactions",
     "user": "postgres",
     "password": "password",
     "host": "localhost",
@@ -35,60 +35,59 @@ def setup_db():
                    CREATE TABLE IF NOT EXISTS transactions
                    (
                        transaction_id
-                       BIGINT
-                       PRIMARY
-                       KEY,
-                       sender_id
+                       BIGINT,
+                       client_id
                        BIGINT,
                        receiver_id
                        BIGINT,
-                       timestamp
-                       TIMESTAMP,
+                       timestamp_iso
+                       TEXT,
                        transaction_type
-                       VARCHAR
+                       TEXT,
+                       channel
+                       TEXT,
+                       amount
+                       DOUBLE
+                       PRECISION,
+                       currency
+                       TEXT,
+                       location
+                       TEXT,
+                       ip_address
+                       TEXT,
+                       mac_address
+                       TEXT,
+                       fingerprint
+                       TEXT,
+                       session_id
+                       TEXT,
+                       timestamp_ms
+                       BIGINT,
+                       current_state
+                       TEXT,
+                       history
+                       JSONB,
+                       client_type
+                       TEXT,
+                       is_fraud
+                       BOOLEAN,
+                       fraud_reason
+                       TEXT,
+                       PRIMARY
+                       KEY
                    (
-                       50
-                   ),
-                       channel VARCHAR
-                   (
-                       50
-                   ),
-                       amount DOUBLE PRECISION,
-                       currency VARCHAR
-                   (
-                       10
-                   ),
-                       status VARCHAR
-                   (
-                       50
-                   ),
-                       geolocation VARCHAR
-                   (
-                       100
-                   ),
-                       ip_address VARCHAR
-                   (
-                       50
-                   ),
-                       mac_address VARCHAR
-                   (
-                       50
-                   ),
-                       fingerprint VARCHAR
-                   (
-                       100
-                   ),
-                       session_id VARCHAR
-                   (
-                       100
-                   ),
-                       is_flagged_fraud BOOLEAN,
-                       client_type VARCHAR
-                   (
-                       50
+                       transaction_id,
+                       timestamp_ms
                    )
                        )
                    ''')
+
+    cursor.execute('''
+        SELECT create_hypertable('transactions', 'timestamp_ms', 
+        chunk_time_interval => 86400000, 
+        if_not_exists => TRUE);
+    ''')
+
     conn.commit()
     return conn
 
@@ -121,93 +120,140 @@ def generate_client_data(num_clients):
     return clients
 
 
+def apply_amount_and_geoloc(t, ctype, base_time, day_code, unique_id_counter):
+    """Router function to apply specific persona logic"""
+    t.client_type = ctype
+
+    if ctype == "Standard":
+        return _set_standard_amount_and_geoloc(t, base_time)
+    elif ctype == "VIP":
+        return _set_vip_amount_and_geoloc(t, base_time)
+    elif ctype == "Corporate":
+        return _set_corporate_amount_and_geoloc(t, base_time)
+    elif ctype == "NightOwl":
+        return _set_nightowl_amount_and_geoloc(t, base_time)
+    elif ctype == "Fraud_StolenCard":
+        return _set_stolen_card_amount_and_geoloc(t, base_time)
+    elif ctype == "Fraud_Smurfing":
+        return _set_smurfing_amount_and_geoloc(t, base_time)
+    elif ctype == "Fraud_ATO":
+        return _set_ato_amount_and_geoloc(t, base_time)
+    elif ctype == "Fraud_ImpossibleTravel":
+        return _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_counter)
+
+
+def _set_standard_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(5.0, 150.0), 2)
+    t.geolocation = get_approx_geolocation("IT")
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(7, 21))
+    t.is_fraud = False
+    t.fraud_reason = "None"
+    return [t]
+
+
+def _set_vip_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(1000.0, 25000.0), 2)
+    t.geolocation = get_approx_geolocation(random.choice(["IT", "US"]))
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 20))
+    t.is_fraud = False
+    t.fraud_reason = "None"
+    return [t]
+
+
+def _set_corporate_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(10000.0, 100000.0), 2)
+    t.geolocation = get_approx_geolocation("IT")
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 17))
+    t.is_fraud = False
+    t.fraud_reason = "None"
+    return [t]
+
+
+def _set_nightowl_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(1.0, 30.0), 2)
+    t.geolocation = get_approx_geolocation("IT")
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.choice([23, 0, 1, 2, 3, 4]))
+    t.is_fraud = False
+    t.fraud_reason = "None"
+    return [t]
+
+
+def _set_stolen_card_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(500.0, 2000.0), 2)
+    t.geolocation = get_approx_geolocation("GLOBAL")
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
+    t.is_fraud = True
+    t.fraud_reason = "Stolen Card Pattern"
+    return [t]
+
+
+def _set_smurfing_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(9900.0, 9999.0), 2)
+    t.geolocation = get_approx_geolocation("GLOBAL")
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 17))
+    t.is_fraud = True
+    t.fraud_reason = "Smurfing Pattern"
+    return [t]
+
+
+def _set_ato_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(20000.0, 50000.0), 2)
+    t.geolocation = get_approx_geolocation("GLOBAL")
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=random.choice([2, 3, 4]))
+    t.is_fraud = True
+    t.fraud_reason = "Account Takeover (ATO)"
+    return [t]
+
+
+def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_counter):
+    # Transaction 1: Normal IT transaction
+    t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=10)
+    t.amount = round(random.uniform(10.0, 50.0), 2)
+    t.geolocation = get_approx_geolocation("IT")
+    t.is_fraud = False
+    t.fraud_reason = "None"
+
+    # Transaction 2: Impossible travel to SE_ASIA 30 mins later
+    t2 = Transaction()
+    t2.sender_id = t.sender_id
+    t2.transaction_id = (day_code * 1_000_000) + unique_id_counter
+    t2.timestamp = t.timestamp + timedelta(minutes=30)
+    t2.amount = round(random.uniform(5000.0, 15000.0), 2)
+    t2.geolocation = get_approx_geolocation("SE_ASIA")
+    t2.is_fraud = True
+    t2.fraud_reason = "Impossible Travel"
+    t2.client_type = t.client_type
+
+    return [t, t2]
+
+
 def generate_transactions(clients, target_rows):
     transactions_data = []
     base_time = datetime.now() - timedelta(days=30)
-
-    # a counter to guarantee 100% unique transaction IDs
     unique_id_counter = 100_000
+    day_code = int(datetime.now().strftime("%Y%m%d"))
 
     while len(transactions_data) < target_rows:
         client = random.choice(clients)
         ctype = client["client_type"]
-        is_fraud = False
 
+        # Base Setup
         t = Transaction()
         t.sender_id = client["client_id"]
-
-        # Ensure the ID is totally unique by appending our counter
-        day_code = int(datetime.now().strftime("%Y%m%d"))
         t.transaction_id = (day_code * 1_000_000) + unique_id_counter
         unique_id_counter += 1
 
-        if ctype == "Standard":
-            t.amount = round(random.uniform(5.0, 150.0), 2)
-            t.geolocation = get_approx_geolocation("IT")
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(7, 21))
+        # Apply the logic
+        configured_txs = apply_amount_and_geoloc(t, ctype, base_time, day_code, unique_id_counter)
 
-        elif ctype == "VIP":
-            t.amount = round(random.uniform(1000.0, 25000.0), 2)
-            t.geolocation = get_approx_geolocation(random.choice(["IT", "US"]))
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 20))
+        # Handle IDs for double-transactions
+        if len(configured_txs) > 1:
+            unique_id_counter += 1  # Bump counter again since t2 consumed an ID
 
-        elif ctype == "Corporate":
-            t.amount = round(random.uniform(10000.0, 100000.0), 2)
-            t.geolocation = get_approx_geolocation("IT")
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 17))
-
-        elif ctype == "NightOwl":
-            t.amount = round(random.uniform(1.0, 30.0), 2)
-            t.geolocation = get_approx_geolocation("IT")
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.choice([23, 0, 1, 2, 3, 4]))
-
-        elif ctype == "Fraud_StolenCard":
-            t.amount = round(random.uniform(500.0, 2000.0), 2)
-            t.geolocation = get_approx_geolocation("GLOBAL")
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
-            is_fraud = True
-
-        elif ctype == "Fraud_Smurfing":
-            t.amount = round(random.uniform(9900.0, 9999.0), 2)
-            t.geolocation = get_approx_geolocation("GLOBAL")
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.randint(9, 17))
-            is_fraud = True
-
-        elif ctype == "Fraud_ATO":
-            t.amount = round(random.uniform(20000.0, 50000.0), 2)
-            t.geolocation = get_approx_geolocation("GLOBAL")
-            tx_time = base_time + timedelta(days=random.randint(0, 30), hours=random.choice([2, 3, 4]))
-            is_fraud = True
-
-        elif ctype == "Fraud_ImpossibleTravel":
-            t1_time = base_time + timedelta(days=random.randint(0, 30), hours=10)
-            t.amount = round(random.uniform(10.0, 50.0), 2)
-            t.geolocation = get_approx_geolocation("IT")
-            t.timestamp = t1_time.isoformat()
-
-            data1 = t.generate_transaction_data()
-            transactions_data.append((data1, False, ctype))
-
-            t2 = Transaction()
-            t2.sender_id = client["client_id"]
-
-            # OVERRIDE: Ensure the second transaction ID is also totally unique
-            t2.transaction_id = (day_code * 1_000_000) + unique_id_counter
-            unique_id_counter += 1
-
-            t2_time = t1_time + timedelta(minutes=30)
-            t2.amount = round(random.uniform(5000.0, 15000.0), 2)
-            t2.geolocation = get_approx_geolocation("SE_ASIA")
-            t2.timestamp = t2_time.isoformat()
-
-            data2 = t2.generate_transaction_data()
-            transactions_data.append((data2, True, ctype))
-            continue
-
-        t.timestamp = tx_time.isoformat()
-
-        data = t.generate_transaction_data()
-        transactions_data.append((data, is_fraud, ctype))
+        # Append finalized data
+        for tx in configured_txs:
+            data = tx.generate_transaction_data()
+            transactions_data.append((data, tx.is_fraud, tx.client_type, tx.fraud_reason))
 
     return transactions_data
 
@@ -215,21 +261,20 @@ def generate_transactions(clients, target_rows):
 def load_to_db(conn, transactions_data):
     cursor = conn.cursor()
     formatted_rows = []
-    for data, is_fraud, ctype in transactions_data:
+    for data, is_fraud, ctype, fraud_reason in transactions_data:
         formatted_rows.append((
-            data["transaction_id"], data["sender_id"], data["receiver_id"],
-            data["timestamp"], data["transaction_type"], data["channel"],
-            data["amount"], data["currency"], data["status"],
-            data["geolocation"], data["ip_address"], data["mac_address"],
-            data["fingerprint"], data["session_id"], is_fraud, ctype
+            data["transaction_id"], data["client_id"], data["receiver_id"],
+            data["timestamp_iso"], data["transaction_type"], data["channel"],
+            data["amount"], data["currency"], data["location"], data["ip_address"],
+            data["mac_address"], data["fingerprint"], data["session_id"],
+            data["timestamp_ms"], "PENDING", json.dumps([]), ctype, is_fraud, fraud_reason
         ))
 
-    # PostgreSQL uses %s instead of ? for parameter substitution
-    # execute_values is much faster than executemany for bulk inserts in Postgres
     insert_query = '''
-                   INSERT INTO transactions (transaction_id, sender_id, receiver_id, timestamp, transaction_type, \
-                                             channel, amount, currency, status, geolocation, ip_address, \
-                                             mac_address, fingerprint, session_id, is_flagged_fraud, client_type) \
+                   INSERT INTO transactions (transaction_id, client_id, receiver_id, timestamp_iso, transaction_type, \
+                                             channel, amount, currency, location, ip_address, mac_address, \
+                                             fingerprint, session_id, timestamp_ms, current_state, history, \
+                                             client_type, is_fraud, fraud_reason) \
                    VALUES %s \
                    '''
     execute_values(cursor, insert_query, formatted_rows)
@@ -245,7 +290,7 @@ if __name__ == "__main__":
     clients = generate_client_data(num_clients=5000)
 
     print("Generating transactions based on personas...")
-    transactions_data = generate_transactions(clients, target_rows=150000)
+    transactions_data = generate_transactions(clients, target_rows=15000)
 
     print("Loading data into Database...")
     load_to_db(conn, transactions_data)

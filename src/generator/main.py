@@ -1,7 +1,7 @@
 import json
 import random
-import logging
 import asyncio
+import psycopg2
 from aiokafka import AIOKafkaProducer
 from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
@@ -11,6 +11,68 @@ logger = configure_logging(__name__)
 # --- Environment & Constants ---
 KAFKA_BROKER = settings.kafka_broker
 KAFKA_TOPIC = settings.kafka_raw_transactions_topic
+
+
+def fetch_existing_clients():
+    """Fetches a pool of existing clients from PostgreSQL/TimescaleDB on startup"""
+    try:
+        logger.info("Connecting to Database to load existing clients...")
+        # Using getattr as a safety net in case settings doesn't have these exact names yet
+        conn = psycopg2.connect(
+            host=settings.db_host,
+            port=getattr(settings, "postgres_port", 5432),
+            dbname=getattr(settings, "postgres_db", "fraud_detection_db"),
+            user=getattr(settings, "postgres_user", "postgres"),
+            password=getattr(settings, "postgres_password", "password")
+        )
+        cursor = conn.cursor()
+        # Fetch up to 5000 distinct clients
+        cursor.execute("SELECT DISTINCT client_id, client_type FROM transactions LIMIT 5000;")
+        clients = [{"client_id": row[0], "client_type": row[1]} for row in cursor.fetchall()]
+        conn.close()
+        logger.info(f"Successfully loaded {len(clients)} existing clients.")
+        return clients
+    except Exception as e:
+        logger.error(f"Failed to fetch clients from Database: {e}")
+        return []
+
+
+def apply_persona(t, client_type):
+    """Applies behavior patterns and explicit fraud labeling to a transaction"""
+    t.client_type = client_type
+
+    # Legitimate personas
+    if client_type == "Standard":
+        t.amount = round(random.uniform(5.0, 150.0), 2)
+    elif client_type == "VIP":
+        t.amount = round(random.uniform(1000.0, 25000.0), 2)
+    elif client_type == "Corporate":
+        t.amount = round(random.uniform(10000.0, 100000.0), 2)
+    elif client_type == "NightOwl":
+        t.amount = round(random.uniform(1.0, 30.0), 2)
+
+    # Fraudulent personas (explicitly labeled)
+    elif client_type == "Fraud_StolenCard":
+        t.amount = round(random.uniform(500.0, 2000.0), 2)
+        t.is_fraud = True
+        t.fraud_reason = "Stolen Card Pattern: High burst amount from unknown device"
+
+    elif client_type == "Fraud_Smurfing":
+        t.amount = round(random.uniform(9900.0, 9999.0), 2)
+        t.is_fraud = True
+        t.fraud_reason = "Smurfing Pattern: Amount deliberately placed just below 10k reporting limit"
+
+    elif client_type == "Fraud_ATO":
+        t.amount = round(random.uniform(20000.0, 50000.0), 2)
+        t.is_fraud = True
+        t.fraud_reason = "Account Takeover (ATO): Massive wallet drain to new recipient"
+
+    elif client_type == "Fraud_ImpossibleTravel":
+        t.amount = round(random.uniform(5000.0, 15000.0), 2)
+        t.is_fraud = True
+        t.fraud_reason = "Impossible Travel: Live geolocation conflicts with recent historical location"
+
+    return t
 
 
 # --- Connection Handlers ---
@@ -31,21 +93,46 @@ async def get_kafka_producer():
 
 # --- Main Application ---
 async def main():
+    # Load existing clients from the database once on startup
+    existing_clients = fetch_existing_clients()
+
     producer = await get_kafka_producer()
     logger.info(f"Generator starting, producing to topic '{KAFKA_TOPIC}'.")
 
     try:
         while True:
             try:
-                # Generate and send transaction
-                transaction = Transaction()
-                transaction_data = transaction.get_kafka_message()
-                await producer.send_and_wait(KAFKA_TOPIC, transaction_data)
-                logger.info(
-                    f"Produced transaction: {transaction_data['transaction_id']}"
-                )
+                # Decide: Use existing client (80%) or generate a new one (20%)
+                if existing_clients and random.random() < 0.8:
+                    client = random.choice(existing_clients)
+                    ctype = client["client_type"]
+                    cid = client["client_id"]
+                else:
+                    persona_types = ["Standard", "VIP", "Corporate", "NightOwl", "Fraud_StolenCard", "Fraud_Smurfing",
+                                     "Fraud_ATO", "Fraud_ImpossibleTravel"]
+                    weights = [0.35, 0.10, 0.15, 0.20, 0.05, 0.05, 0.05, 0.05]
+                    ctype = random.choices(persona_types, weights=weights, k=1)[0]
+                    cid = random.randint(100_000, 999_999)
 
-                # Sleep for a random interval
+                # Generate transaction and apply persona
+                transaction = Transaction()
+                transaction.sender_id = cid
+                transaction = apply_persona(transaction, ctype)
+
+                # Fetch data based on the right branch's formatting
+                transaction_data = transaction.get_kafka_message() if hasattr(transaction,
+                                                                              'get_kafka_message') else transaction.generate_transaction_data()
+
+                await producer.send_and_wait(KAFKA_TOPIC, transaction_data)
+
+                # Log success or fraud
+                if getattr(transaction, 'is_fraud', False) or transaction_data.get("is_fraud"):
+                    logger.warning(
+                        f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}")
+                else:
+                    logger.info(f"Produced OK ({transaction_data['transaction_id']})")
+
+                # Sleep for a random interval based on settings
                 min_sleep = settings.generator_min_sleep_ms / 1000.0
                 max_sleep = settings.generator_max_sleep_ms / 1000.0
                 await asyncio.sleep(random.uniform(min_sleep, max_sleep))

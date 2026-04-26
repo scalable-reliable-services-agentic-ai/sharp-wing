@@ -1,4 +1,3 @@
-
 [project]
 name = "transaction_fraud_detection_system"
 version = "0.1.0"
@@ -9,6 +8,7 @@ dependencies = [
     "redis[async]",
     "pyyaml",
     "jinja2",
+    "faker",
     "aiokafka",
     "asyncpg",
     "sqlalchemy",
