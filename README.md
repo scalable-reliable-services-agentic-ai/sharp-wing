@@ -78,7 +78,7 @@ So far, these elements are created (for now, really simple; it's more a toy exma
         - other features based on attributes from the `Transaction` class in `src/generator/transaction.py`
     1. Prepare a file/script that will be used to load the data into the DB (_needed to decide how many rows or different client IDs: 1k? 30k? 200k? 1M?_)
 
-- [NotAssignedYet] Generator update
+- [Arash] Generator update [DONE]
     1. Transactions should generate new transactions including both new clients and clients that already exist in the database. Generation of transactions for the existing clients should take into the account their behaviour patterns (described in _scenarios_ from previous point)
     1. The invlaid/fraud clients should be identified before or in the moment of generation (with known reason and explanation why). That will let us test if the anomaly detection works properly. 
 
