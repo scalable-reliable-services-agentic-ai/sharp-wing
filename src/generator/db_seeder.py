@@ -1,20 +1,14 @@
 import os
-import sys
 import json
 import psycopg2
 from psycopg2.extras import execute_values
 import random
 from datetime import datetime, timedelta
 from faker import Faker
-from src.config import settings
+from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
 
-
-# Dynamically finds the project root and adds it to Python's path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../../"))
-sys.path.insert(0, current_dir)
-sys.path.insert(0, project_root)
+logger = configure_logging(__name__)
 
 
 fake = Faker()
@@ -30,6 +24,7 @@ DB_CONFIG = {
 
 
 def setup_db():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     conn = psycopg2.connect(**DB_CONFIG)
     with conn.cursor() as cursor:
         with open(os.path.join(current_dir, "sql/setup.sql"), "r") as f:
@@ -230,6 +225,7 @@ def generate_transactions(clients, target_rows):
 
 
 def load_to_db(conn, transactions_data):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     with conn.cursor() as cursor:
         formatted_rows = []
         for data, is_fraud, ctype, fraud_reason in transactions_data:
@@ -260,18 +256,22 @@ def load_to_db(conn, transactions_data):
         with open(os.path.join(current_dir, "sql/insert_transaction.sql"), "r") as f:
             insert_query = f.read()
         execute_values(cursor, insert_query, formatted_rows)
+        conn.commit()
+        logger.info(
+            f"Successfully inserted {len(formatted_rows)} rows into PostgreSQL."
+        )
 
 
 if __name__ == "__main__":
-    print("Connecting to PostgreSQL...")
+    logger.info("Connecting to PostgreSQL...")
     with setup_db() as conn:
-        print("Generating clients...")
+        logger.info("Generating clients...")
         clients = generate_client_data(num_clients=5000)
 
-        print("Generating transactions based on personas...")
+        logger.info("Generating transactions based on personas...")
         transactions_data = generate_transactions(clients, target_rows=15000)
 
-        print("Loading data into Database...")
+        logger.info("Loading data into Database...")
         load_to_db(conn, transactions_data)
 
-    print("Database seeding complete!")
+    logger.info("Database seeding complete!")
