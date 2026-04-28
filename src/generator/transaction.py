@@ -68,7 +68,7 @@ class Transaction:
             "session_id": self.session_id,
             "is_fraud": self.is_fraud,
             "fraud_reason": self.fraud_reason,
-            "client_type": self.client_type
+            "client_type": self.client_type,
         }
 
     def get_kafka_message(self):

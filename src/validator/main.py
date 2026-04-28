@@ -4,7 +4,6 @@ import asyncio
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import redis.asyncio as aioredis
 from src.config import settings, configure_logging
-import logging
 
 logger = configure_logging(__name__)
 

@@ -47,6 +47,7 @@ services:
       - .env
     command: >
       bash -c "
+        export KAFKA_OPTS=\"-Dlog4j.configuration=file:/dev/null\" &&
         echo 'Waiting for Kafka to be ready...' &&
         cub kafka-ready -b kafka:29092 1 30 &&
         echo 'Kafka is ready!' &&
@@ -69,7 +70,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d transactions" ]
+      test: [ "CMD-SHELL", "pg_isready -U user -d transactions" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -91,6 +92,20 @@ services:
       - redis_data:/data
 
   # Application Services
+  seeder:
+    build:
+      context: .
+      dockerfile: docker/seeder.Dockerfile
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: on-failure
+
   generator:
     build:
       context: .
@@ -104,6 +119,8 @@ services:
       kafka:
         condition: service_healthy
       kafka-topics-creator:
+        condition: service_completed_successfully
+      seeder:
         condition: service_completed_successfully
 
   validator:
@@ -143,6 +160,11 @@ services:
         condition: service_completed_successfully
       timescaledb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'src.batch_ingestor.main' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   reporter:
     build:
