@@ -1,6 +1,7 @@
 [project]
 name = "transaction_fraud_detection_system"
 version = "0.1.0"
+requires-python = ">=3.12"
 dependencies = [
     "logging",
     "flask",
@@ -13,11 +14,7 @@ dependencies = [
     "asyncpg",
     "sqlalchemy",
     "psycopg2-binary",
-    "pydantic-settings"
-]
-
-[project.optional-dependencies]
-dev = [
+    "pydantic-settings",
     "black",
     "ruff",
 ]
