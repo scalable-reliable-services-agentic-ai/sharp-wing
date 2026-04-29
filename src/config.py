@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     kafka_broker: str
     kafka_raw_transactions_topic: str
     kafka_validated_transactions_topic: str
+    kafka_invalid_transactions_topic:str
+    kafka_noanomaly_transactions_topic: str
+    kafka_anomaly_detected_transactions_topic: str
     kafka_human_review_required_topic: str
     kafka_final_transactions_topic: str
 

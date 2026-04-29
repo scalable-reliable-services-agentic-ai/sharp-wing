@@ -53,6 +53,9 @@ services:
         echo 'Kafka is ready!' &&
         kafka-topics --create --if-not-exists --topic $$KAFKA_RAW_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
         kafka-topics --create --if-not-exists --topic $$KAFKA_VALIDATED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_INVALID_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_NOANOMALY_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_ANOMALY_DETECTED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
         kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 &&
         kafka-topics --create --if-not-exists --topic $$KAFKA_FINAL_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
         echo 'Topics created!'
