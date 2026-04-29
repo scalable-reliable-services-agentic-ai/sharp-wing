@@ -41,7 +41,7 @@ def fetch_existing_clients():
         return []
 
 
-def apply_persona(t, client_type):
+def apply_persona(t: Transaction, client_type):
     """Applies behavior patterns and explicit fraud labeling to a transaction"""
     t.client_type = client_type
 
@@ -75,6 +75,9 @@ def apply_persona(t, client_type):
         t.amount = round(random.uniform(5000.0, 15000.0), 2)
         t.is_fraud = True
         t.fraud_reason = "Impossible Travel: Live geolocation conflicts with recent historical location"
+
+    if random.random() < 0.025:
+        t.invalidate_transaction_amount()
 
     return t
 

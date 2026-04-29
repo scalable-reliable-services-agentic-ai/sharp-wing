@@ -49,6 +49,10 @@ class Transaction:
         probability = [0.5, 0.3, 0.1, 0.06, 0.035, 0.005]
         return random.choices(currencies, probability, k=1)[0]
 
+    def invalidate_transaction_amount(self):
+        self.amount *= -0.1
+        return None
+
     def generate_transaction_data(self):
         """Generates a dictionary for the Kafka message, compatible with downstream services."""
         return {
