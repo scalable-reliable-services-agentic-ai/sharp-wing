@@ -44,6 +44,27 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 <img width="400" height="651" alt="image" src="https://github.com/user-attachments/assets/8cdf5f3b-1955-43c6-9365-74a8e25da9e3" />
 
 
+## Remaining things
+
+1. Infrastructure:
+    - Kubernetes
+        - and other staff related to that 
+
+2. Anomaly detection:
+    - MCP tools/funcitons for the first anomaly detection
+        - it includes things like: checking current amount and average one, location changes, frequency of spending and timing, etc.    
+    - Implementing the usage of the llm-proxy/library -- some binding for the llm
+    - instructions for the LLM, some Agentic Operations Requirements, Policies, etc
+
+3. Validator
+    - Fixing the validation count
+    - Managing invalid transactions
+
+4. Operational dashboard
+
+5. Controlled failure of system
+
+
 ## TODO
 
 - [DONE] [Miki] Database setup and queue update
