@@ -10,7 +10,8 @@ logger = configure_logging(__name__)
 # --- Environment Variables ---
 KAFKA_BROKER = settings.kafka_broker
 IN_TOPIC = settings.kafka_raw_transactions_topic
-FINAL_TOPIC = settings.kafka_final_transactions_topic
+OUT_TOPIC_VALID = settings.kafka_validated_transactions_topic
+OUT_TOPIC_INVALID = settings.kafka_invalid_transactions_topic
 REDIS_HOST = settings.redis_host
 
 
@@ -106,7 +107,7 @@ async def process_message(message, producer, redis_client):
                     "ts": int(time.time() * 1000),
                 }
             )
-            await producer.send_and_wait(FINAL_TOPIC, transaction)
+            await producer.send_and_wait(OUT_TOPIC_VALID, transaction)
             await redis_client.incr("total_validated_realtime")
             logger.info(f"Validated transaction {transaction['transaction_id']}: OK")
         else:
@@ -119,7 +120,7 @@ async def process_message(message, producer, redis_client):
                     "ts": int(time.time() * 1000),
                 }
             )
-            await producer.send_and_wait(FINAL_TOPIC, transaction)
+            await producer.send_and_wait(OUT_TOPIC_INVALID, transaction)
             pipe = redis_client.pipeline()
             pipe.incr("total_invalid_realtime")
             pipe.lpush("recent_invalid_transactions", json.dumps(transaction))

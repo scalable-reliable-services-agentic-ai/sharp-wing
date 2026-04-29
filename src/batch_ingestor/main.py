@@ -14,7 +14,8 @@ logger = configure_logging(__name__)
 BATCH_SIZE = settings.batch_size
 BATCH_INTERVAL = settings.batch_interval
 KAFKA_BROKER = settings.kafka_broker
-KAFKA_TOPIC = settings.kafka_final_transactions_topic
+# KAFKA_TOPIC = settings.kafka_final_transactions_topic  # for later
+KAFKA_TOPIC = settings.kafka_validated_transactions_topic
 DATABASE_URL = settings.async_database_url
 
 
