@@ -133,7 +133,7 @@ async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> 
                 "time_window_hours": 24,
                 "transaction_count": row.transaction_count,
                 "total_volume": float(row.total_volume),
-                # We give the LLM a gentle hint if it's suspiciously close to 10k!
+                # We give the LLM a gentle hint if it's suspiciously close to 10k
                 "smurfing_risk_flag": 9000 <= float(row.total_volume) < 10000
             }
 
