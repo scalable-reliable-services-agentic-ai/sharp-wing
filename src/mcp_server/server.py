@@ -3,16 +3,15 @@ import logging
 from fastmcp import FastMCP
 import os
 import sys
+from src.config import settings
+import redis.asyncio as aioredis
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import text
 
 # Dynamically find the project root and add it to Python's path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 sys.path.insert(0, project_root)
-
-from src.config import settings
-import redis.asyncio as aioredis
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +34,7 @@ async def get_redis_client():
 
 
 # MCP Tools for the LLM Agent
+
 
 @mcp.tool()
 async def get_user_history(client_id: int, limit: int = 5) -> str:
@@ -65,7 +65,9 @@ async def get_user_history(client_id: int, limit: int = 5) -> str:
 
 
 @mcp.tool()
-async def evaluate_impossible_travel(client_id: int, current_location: str, current_timestamp_ms: int) -> str:
+async def evaluate_impossible_travel(
+    client_id: int, current_location: str, current_timestamp_ms: int
+) -> str:
     """
     Evaluates if the user's current transaction location conflicts geographically
     with their last known location in Redis, indicating a potential Account Takeover
@@ -78,7 +80,9 @@ async def evaluate_impossible_travel(client_id: int, current_location: str, curr
         profile = await redis_client.hgetall(f"client:{client_id}:profile")
 
         if not profile or "last_location" not in profile:
-            return "Insufficient data: No previous location history found for this user."
+            return (
+                "Insufficient data: No previous location history found for this user."
+            )
 
         last_location = profile["last_location"]
         last_seen_ts = int(profile.get("last_seen_ts", 0))
@@ -87,12 +91,14 @@ async def evaluate_impossible_travel(client_id: int, current_location: str, curr
 
         # Here we would normally calculate actual Haversine distance between coords
         # For now, we return the raw data so the LLM can reason about it
-        return json.dumps({
-            "previous_location": last_location,
-            "current_location": current_location,
-            "time_elapsed_minutes": round(time_diff_minutes, 2),
-            "assessment": "Agent must determine if travel between these coordinates is possible in the given time."
-        })
+        return json.dumps(
+            {
+                "previous_location": last_location,
+                "current_location": current_location,
+                "time_elapsed_minutes": round(time_diff_minutes, 2),
+                "assessment": "Agent must determine if travel between these coordinates is possible in the given time.",
+            }
+        )
     finally:
         await redis_client.close()
 
@@ -119,11 +125,14 @@ async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> 
                            AND timestamp_ms <= :current_timestamp_ms
                          """)
 
-            result = await conn.execute(query, {
-                "client_id": client_id,
-                "twenty_four_hours_ago": twenty_four_hours_ago,
-                "current_timestamp_ms": current_timestamp_ms
-            })
+            result = await conn.execute(
+                query,
+                {
+                    "client_id": client_id,
+                    "twenty_four_hours_ago": twenty_four_hours_ago,
+                    "current_timestamp_ms": current_timestamp_ms,
+                },
+            )
 
             # Fetch the first (and only) row
             row = result.fetchone()
@@ -134,7 +143,7 @@ async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> 
                 "transaction_count": row.transaction_count,
                 "total_volume": float(row.total_volume),
                 # We give the LLM a gentle hint if it's suspiciously close to 10k
-                "smurfing_risk_flag": 9000 <= float(row.total_volume) < 10000
+                "smurfing_risk_flag": 9000 <= float(row.total_volume) < 10000,
             }
 
             return json.dumps(velocity_data)
@@ -145,12 +154,16 @@ async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> 
 
 
 @mcp.tool()
-async def escalate_to_operator(transaction_id: int, agent_reasoning: str, confidence_score: float) -> str:
+async def escalate_to_operator(
+    transaction_id: int, agent_reasoning: str, confidence_score: float
+) -> str:
     """
     If the agent's confidence in accepting/rejecting the transaction is below threshold (for example, < 0.85),
     use this tool to route the case to a human operator queue (with dashboard update)
     """
-    logger.warning(f"Agent escalating transaction {transaction_id} (Confidence: {confidence_score})")
+    logger.warning(
+        f"Agent escalating transaction {transaction_id} (Confidence: {confidence_score})"
+    )
 
     # TODO: In the future, this tool could publish a message to the 'human-review-required' Kafka topic
 
