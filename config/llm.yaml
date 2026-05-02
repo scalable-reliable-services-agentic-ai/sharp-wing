@@ -1,0 +1,6 @@
+LITELLM_PROXY_URL: !!str "https://litellm-proxy-1013932759942.europe-west8.run.app"
+MODEL:
+  gemini:
+    name: !!str "gemini-2.5-pro"
+  mistral:
+    name: !!str "vertex_ai/mistral-small-2503"

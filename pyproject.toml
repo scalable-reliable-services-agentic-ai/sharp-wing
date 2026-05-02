@@ -6,7 +6,7 @@ dependencies = [
     "logging",
     "flask",
     "flask-sse",
-    "redis[async]",
+    "redis",
     "pyyaml",
     "jinja2",
     "faker",
@@ -17,5 +17,7 @@ dependencies = [
     "pydantic-settings",
     "black",
     "ruff",
+    "litellm",
+    "openai",
     "fastmcp",
 ]
