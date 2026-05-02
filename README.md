@@ -45,26 +45,40 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 
 
 ## Remaining things
+(order does not matter)
 
 1. Infrastructure:
     - Kubernetes
         - and other staff related to that 
+    
+    - Prometheus & Grafana
+        - for observability, metrics and log managing
 
-2. Anomaly detection:
-    - MCP tools/funcitons for the first anomaly detection
-        - it includes things like: checking current amount and average one, location changes, frequency of spending and timing, etc.    
-    - Implementing the usage of the llm-proxy/library -- some binding for the llm
-    - instructions for the LLM, some Agentic Operations Requirements, Policies, etc
+1. Anomaly detection:
+    - Delete current LLM use in this service
+    - Create new deterministic module
+        - Mimic real advanced ML system with simple functions
+        - Add quick, simple functions to use in the service
+        - Copy some from other existing instances
+        - Make sure not to call the whole database. Adjust the Redis to have really fast responses
 
-3. Validator
-    - Fixing the validation count
-    - Managing invalid transactions
+1. Agents and MCP services
 
-4. Operational dashboard
+    1. Triage & Diagnosis &mdash;
+    handles frauded transactions, can join autonomus decisions with *HITL*.
+        - Telemetry and Observability
 
-5. Controlled failure of system
+    1. Monitoring, Remediation & Escalation &mdash;
+    Monitors the status of the system and make decisions based on the system state.
+        - Remediation
+        - Policies
+
+1. Operational dashboards and human-in-the-loop services
+
+1. Controlled failure of system
 
 
+<!--
 ## TODO
 
 - [DONE] [Miki] Database setup and queue update
@@ -143,3 +157,4 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 
 - Maybe in anomaly detection modules there should be a few agents that check some things/attributes/cases simultaneously. Then some manager/master agent verifies all of these smaller agents, and then it decides a final verdict.
 The manager/master could have a LLM integrated and call other subagents by MCP (?)
+-->
