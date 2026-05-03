@@ -10,16 +10,18 @@ from src.database.models import Base, Transaction
 
 logger = configure_logging(__name__)
 
-# --- Environment Variables ---
 BATCH_SIZE = settings.batch_size
 BATCH_INTERVAL = settings.batch_interval
 KAFKA_BROKER = settings.kafka_broker
-# KAFKA_TOPIC = settings.kafka_final_transactions_topic  # for later
-KAFKA_TOPIC = settings.kafka_validated_transactions_topic
 DATABASE_URL = settings.async_database_url
 
+TOPICS = [
+    settings.kafka_noanomaly_transactions_topic,
+    settings.kafka_final_transactions_topic,
+    settings.kafka_human_review_required_topic
+]
 
-# --- Connection & Setup ---
+
 async def get_db_engine():
     while True:
         try:
@@ -28,9 +30,7 @@ async def get_db_engine():
                 logger.info("Database connection established successfully")
                 return engine
         except Exception as e:
-            logger.error(
-                f"Could not connect to database: {e}. Retrying in 5 seconds..."
-            )
+            logger.error(f"Could not connect to database: {e}. Retrying in 5 seconds...")
             await asyncio.sleep(5)
 
 
@@ -42,36 +42,33 @@ async def setup_database(engine):
         async with engine.connect() as connection:
             await connection.execute(
                 text(
-                    "SELECT create_hypertable('transactions', 'timestamp_ms', if_not_exists => TRUE, chunk_time_interval => 86400000);"
-                )
+                    "SELECT create_hypertable('transactions', 'timestamp_ms', if_not_exists => TRUE, chunk_time_interval => 86400000);")
             )
             await connection.commit()
-            logger.info("Ensured 'transactions' is a hypertable.")
     except Exception as e:
-        logger.warning(
-            f"Failed to create hypertable (this is often fine if it already exists): {e}"
-        )
+        pass
 
 
 async def get_kafka_consumer():
     while True:
         try:
+            # We now pass the TOPICS list directly
             consumer = AIOKafkaConsumer(
-                KAFKA_TOPIC,
+                *TOPICS,
                 bootstrap_servers=KAFKA_BROKER,
                 auto_offset_reset="earliest",
                 group_id="batch-ingestor-group",
                 value_deserializer=lambda x: json.loads(x.decode("utf-8")),
             )
             await consumer.start()
-            logger.info(f"Consumer connected to Kafka topic: {KAFKA_TOPIC}")
+            logger.info(f"Ingestor connected to End-State Topics: {TOPICS}")
             return consumer
         except Exception as e:
             logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...")
             await asyncio.sleep(5)
 
 
-# --- Main Application ---
+# Main Application
 async def main():
     consumer = await get_kafka_consumer()
     engine = await get_db_engine()
@@ -83,20 +80,37 @@ async def main():
     try:
         while True:
             try:
-                # Poll for messages with a timeout
                 result = await consumer.getmany(timeout_ms=1000, max_records=BATCH_SIZE)
                 for tp, messages in result.items():
                     for message in messages:
-                        message.value.pop("status", None)
-                        buffer.append(message.value)
+                        tx_data = message.value
+
+                        # AI Data Extraction & Status Routing
+                        topic_name = tp.topic
+
+                        if topic_name == settings.kafka_human_review_required_topic:
+                            tx_data["status"] = "ESCALATED"
+                        elif topic_name == settings.kafka_final_transactions_topic:
+                            tx_data["status"] = "AI_RESOLVED"
+                        else:
+                            tx_data["status"] = "CLEARED_SYSTEM_1"
+
+                        # Safely extract the reasoning dictionaries to json strings
+                        # Assuming your database has an 'agent_reasoning' string/json column
+                        ai_eval = tx_data.pop("agentic_evaluation", {})
+                        sys1_reasons = tx_data.pop("system_1_reasons", [])
+
+                        # Combine them into whatever field your DB expects (for example, agent_reasoning)
+                        if ai_eval or sys1_reasons:
+                            tx_data["agent_reasoning"] = json.dumps({
+                                "system_1": sys1_reasons,
+                                "system_2": ai_eval
+                            })
+
+                        buffer.append(tx_data)
 
                 time_since_last_flush = time.time() - last_flush_time
-                if len(buffer) >= BATCH_SIZE or (
-                    time_since_last_flush > BATCH_INTERVAL and buffer
-                ):
-                    if not buffer:
-                        continue
-
+                if len(buffer) >= BATCH_SIZE or (time_since_last_flush > BATCH_INTERVAL and buffer):
                     async with engine.connect() as connection:
                         stmt = pg_insert(Transaction).values(buffer)
                         stmt = stmt.on_conflict_do_nothing(
@@ -111,7 +125,7 @@ async def main():
 
             except Exception as e:
                 logger.error(f"An error occurred during the batch insert loop: {e}")
-                buffer = []  # Clear buffer on error
+                buffer = []
     finally:
         await consumer.stop()
         await engine.dispose()
