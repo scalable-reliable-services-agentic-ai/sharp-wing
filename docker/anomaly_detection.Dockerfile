@@ -13,9 +13,10 @@ RUN uv pip install --system .
 # Stage 2: Create the final image
 FROM base AS final
 
+COPY config/ /app/config/
 COPY src/ /app/src
 
 # Set the python path to the root of the app
 ENV PYTHONPATH=/app
 
-CMD ["python", "-m", "src.mcp_server.server"]
+CMD ["python", "-u", "-m", "src.anomaly_detection.main"]

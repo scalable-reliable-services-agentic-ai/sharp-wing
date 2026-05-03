@@ -1,123 +1,109 @@
 import json
-import time
 import asyncio
-from pathlib import Path
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import redis.asyncio as aioredis
 from src.config import settings, configure_logging
-
-# from litellm import acompletion
-from openai import OpenAI
-from mcp import (
-    ClientSession,
-    StdioServerParameters,
-)  # lub HTTP, zależnie jak wystawiony jest MCP
-from mcp.client.stdio import stdio_client
+from datetime import datetime
 
 logger = configure_logging(__name__)
 
-
-MODEL_PROXY = settings.litellm_proxy_url
-MODEL_KEY = settings.litellm_api_key
-# MODEL_NAME = settings.litellm_mistral_model
-MODEL_NAME = settings.litellm_gemini_model
-
-PROMPT_DIR = Path(__file__).parent / "prompts"
-SYSTEM_PROMPT = (PROMPT_DIR / "system.md").read_text()
-logger.info("System prompt loaded successfully.")
-
-
-# --- Environment Variables ---
-KAFKA_BROKER = settings.kafka_broker
 IN_TOPIC = settings.kafka_validated_transactions_topic
-OUT_TOPIC = settings.kafka_final_transactions_topic
-REDIS_HOST = settings.redis_host
+OUT_SAFE_TOPIC = settings.kafka_noanomaly_transactions_topic
+OUT_ANOMALY_TOPIC = settings.kafka_anomaly_detected_transactions_topic
 
 
-async def get_kafka_consumer():
-    while True:
-        try:
-            consumer = AIOKafkaConsumer(
-                bootstrap_servers=KAFKA_BROKER,
-                auto_offset_reset="earliest",
-                group_id="anomaly-detection-group",
-                value_deserializer=lambda x: json.loads(x.decode("utf-8")),
-            )
-            await consumer.start()
-            logger.info("AIOKafkaConsumer connected.")
-            return consumer
-        except Exception as e:
-            logger.error(f"Could not connect to Kafka Consumer: {e}. Retrying...")
-            await asyncio.sleep(5)
+async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[bool, list[str]]:
+    """Evaluates deterministic rules tailored to the seeder personas"""
+    reasons = []
+    is_anomaly = False
 
+    amount = float(transaction.get("amount", 0.0))
+    sender_id = transaction.get("sender_id")
+    # Generator sets timestamp as ISO string, for example, "2026-05-02T14:30:00"
+    timestamp_str = transaction.get("timestamp_iso", "")
+    location = transaction.get("location", "")
 
-async def get_kafka_producer():
-    while True:
-        try:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=KAFKA_BROKER,
-                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-            )
-            await producer.start()
-            logger.info("AIOKafkaProducer connected.")
-            return producer
-        except Exception as e:
-            logger.error(f"Could not connect to Kafka Producer: {e}. Retrying...")
-            await asyncio.sleep(5)
-
-
-async def get_redis_connection():
-    while True:
-        try:
-            r = aioredis.from_url(f"redis://{REDIS_HOST}", decode_responses=True)
-            await r.ping()
-            logger.info("Async Redis connection established.")
-            return r
-        except Exception as e:
-            logger.error(f"Could not connect to Redis: {e}. Retrying...")
-            await asyncio.sleep(5)
-
-
-async def detect_anomaly(message, producer):
-    """
-    Processes a single transaction message to detect anomalies.
-    """
-    transaction_data = message.value
-    logger.info(f"Processing transaction: {transaction_data.get('transaction_id')}")
+    # Extract the hour from the timestamp for behavioral checks
     try:
-        llm_client = OpenAI(
-            api_key=MODEL_KEY,
-            base_url=MODEL_PROXY,
-        )
+        tx_hour = datetime.fromisoformat(timestamp_str).hour
+    except ValueError:
+        tx_hour = 12 # Default fallback
 
-        response = llm_client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(transaction_data)},
-            ],
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
+    # RULE 1: Smurfing Check (Catches Fraud_Smurfing)
+    if 9900 <= amount <= 9999:
+        is_anomaly = True
+        reasons.append(f"Smurfing Check: Amount ${amount} is designed to evade 10k reporting.")
 
-        llm_output = json.loads(response.choices[0].message.content)
-        logger.info(f"LLM analysis complete: {llm_output}")
+    # RULE 2: Time-Based Massive Drain (Catches Fraud_ATO)
+    # VIPs/Corporate do large amounts, but NOT at 3 AM
+    if amount >= 20000 and (tx_hour <= 4 or tx_hour >= 23):
+        is_anomaly = True
+        reasons.append(f"ATO Check: Massive transfer (${amount}) initiated at suspicious hour ({tx_hour}:00).")
 
-        # await producer.send_and_wait(OUT_TOPIC, llm_output)
+    # RULE 3: Geolocation Tripwire (Catches StolenCard & ImpossibleTravel)
+    # If it's not a standard IT/US coordinate, flag it for LLM review
+    if "SE_ASIA" in location or "GLOBAL" in location:
+         is_anomaly = True
+         reasons.append(f"Location Tripwire: Transaction from high-risk or unexpected region ({location}). Needs LLM review.")
+
+    # RULE 4: Standard Velocity Check
+    if sender_id:
+        redis_key = f"velocity:{sender_id}"
+        current_count = await redis_client.incr(redis_key)
+        if current_count == 1:
+            await redis_client.expire(redis_key, 60) # 60 seconds window
+
+        if current_count > 4:
+            is_anomaly = True
+            reasons.append(f"Velocity Check: User {sender_id} attempted {current_count} transactions in 60s.")
+
+    return is_anomaly, reasons
+
+
+async def process_message(message, producer: AIOKafkaProducer, redis_client: aioredis.Redis):
+    transaction = message.value
+    tx_id = transaction.get("transaction_id", "UNKNOWN")
+
+    try:
+        # 1. Check the fast rules
+        is_anomaly, reasons = await check_rules(transaction, redis_client)
+
+        # 2. Route the transaction to the correct topic funnel
+        if is_anomaly:
+            logger.warning(f"Rule triggered [TX: {tx_id}] - {reasons}")
+            transaction["system_1_reasons"] = reasons
+            await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
+        else:
+            logger.info(f"Safe [TX: {tx_id}]")
+            await producer.send_and_wait(OUT_SAFE_TOPIC, transaction)
+
     except Exception as e:
-        logger.error(f"Error during anomaly detection: {e}")
+        logger.error(f"Error processing transaction {tx_id}: {e}")
 
 
 async def main():
-    consumer = await get_kafka_consumer()
-    producer = await get_kafka_producer()
-    redis_client = await get_redis_connection()
+    # Setup Kafka and Redis connections
+    consumer = AIOKafkaConsumer(
+        IN_TOPIC,
+        bootstrap_servers=settings.kafka_broker,
+        group_id="deterministic-anomaly-group",  # New group name!
+        value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+        auto_offset_reset="earliest"
+    )
+    producer = AIOKafkaProducer(
+        bootstrap_servers=settings.kafka_broker,
+        value_serializer=lambda v: json.dumps(v).encode("utf-8")
+    )
+    redis_client = aioredis.from_url(f"redis://{settings.redis_host}:{settings.redis_port}", decode_responses=True)
 
-    logger.info(f"Anomaly detection starting. Consuming from topic: {IN_TOPIC}")
+    await consumer.start()
+    await producer.start()
+    logger.info(f"Fast System 1 Anomaly Detection started. Listening on: {IN_TOPIC}")
 
     try:
         async for message in consumer:
-            asyncio.create_task(detect_anomaly(message, producer, redis_client))
+            # Because Redis takes 1 millisecond, we can safely use create_task for massive speed
+            asyncio.create_task(process_message(message, producer, redis_client))
     finally:
         await consumer.stop()
         await producer.stop()

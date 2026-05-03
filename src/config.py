@@ -3,7 +3,7 @@ import yaml
 from typing import Any, Dict
 
 
-def yaml_config_source(settings: BaseSettings) -> Dict[str, Any]:
+def yaml_config_source(*args, **kwargs) -> Dict[str, Any]:
     """
     A settings source that loads variables from the specific llm.yaml file.
     """
