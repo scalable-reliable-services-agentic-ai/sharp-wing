@@ -21,7 +21,7 @@ PROMPT_DIR = Path(__file__).parent / "prompts"
 SYSTEM_PROMPT = (PROMPT_DIR / "system.md").read_text()
 logger.info("System prompt loaded successfully.")
 
-# The New Funnel Topics
+# Funnel Topics
 KAFKA_BROKER = settings.kafka_broker
 IN_TOPIC = settings.kafka_anomaly_detected_transactions_topic
 OUT_REVIEW_TOPIC = settings.kafka_human_review_required_topic

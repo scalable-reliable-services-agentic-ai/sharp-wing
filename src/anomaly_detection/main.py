@@ -7,6 +7,7 @@ from datetime import datetime
 
 logger = configure_logging(__name__)
 
+# Funnel Topics
 IN_TOPIC = settings.kafka_validated_transactions_topic
 OUT_SAFE_TOPIC = settings.kafka_noanomaly_transactions_topic
 OUT_ANOMALY_TOPIC = settings.kafka_anomaly_detected_transactions_topic
