@@ -3,7 +3,6 @@ import os
 import asyncio
 from pathlib import Path
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-import redis.asyncio as aioredis
 from src.config import settings, configure_logging
 
 # The crucial async client we fixed earlier
@@ -26,7 +25,6 @@ KAFKA_BROKER = settings.kafka_broker
 IN_TOPIC = settings.kafka_anomaly_detected_transactions_topic
 OUT_REVIEW_TOPIC = settings.kafka_human_review_required_topic
 OUT_FINAL_TOPIC = settings.kafka_final_transactions_topic
-REDIS_HOST = settings.redis_host
 
 
 async def triage_transaction(message, producer, session, openai_tools, llm_client):
@@ -41,8 +39,11 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             {"role": "user", "content": json.dumps(transaction_data)}
         ]
 
-        # The Tool Calling Loop
-        while True:
+        # The Tool Calling Loop with Economic Guardrails
+        max_steps = 5
+        current_step = 0
+
+        while current_step < max_steps:
             response = await llm_client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=messages,
@@ -53,6 +54,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             response_message = response.choices[0].message
             messages.append(response_message)
 
+            # If no tools are requested, the LLM has made its decision
             if not response_message.tool_calls:
                 break
 
@@ -70,10 +72,19 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                     "content": result.content[0].text
                 })
 
-        # Final Parse
-        llm_output = json.loads(response_message.content)
-        logger.info(f"Final Agent Decision: {llm_output}")
+            current_step += 1
 
+        # If the loop maxed out, force a human escalation
+        if current_step >= max_steps:
+            logger.warning(f"Agent exceeded max reasoning steps ({max_steps}). Forcing Human Escalation.")
+            # Force the LLM output to demand human review
+            llm_output = {"requires_human_review": True,
+                          "reasoning": "Exceeded maximum reasoning steps. Possible loop detected."}
+        else:
+            # Final Parse if it finished naturally
+            llm_output = json.loads(response_message.content)
+
+        logger.info(f"Final Agent Decision: {llm_output}")
         transaction_data["agentic_evaluation"] = llm_output
 
         # Route based on the LLM's confidence

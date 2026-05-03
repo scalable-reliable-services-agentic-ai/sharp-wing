@@ -1,53 +1,46 @@
 import json
 import logging
-from fastmcp import FastMCP
 import os
 import sys
-from src.config import settings
-import redis.asyncio as aioredis
+from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
+import redis.asyncio as aioredis
 
 # Dynamically find the project root and add it to Python's path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 sys.path.insert(0, project_root)
 
+from src.config import settings
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp-server")
 
 # Initialize the FastMCP Server
-mcp = FastMCP("FraudDetectionAgent")
+mcp = FastMCP("Telemetry-Observability-Agent")
 
 
 # Connection Helpers
 async def get_db_connection():
     """Helper to get an async connection to TimescaleDB"""
-    engine = create_async_engine(settings.async_database_url)
-    return engine
+    return create_async_engine(settings.async_database_url)
 
 
-async def get_redis_client():
-    """Helper to get an async connection to Redis"""
-    return aioredis.from_url(f"redis://{settings.redis_host}", decode_responses=True)
-
-
-# MCP Tools for the LLM Agent
-
-
+# Tool 1: Baseline History (Catches StolenCard & ATO)
 @mcp.tool()
 async def get_user_history(client_id: int, limit: int = 5) -> str:
     """
     Fetches the recent transaction history for a specific user
-    we use this tool to establish a baseline of the user's normal behavior
+    Use this to establish a baseline of the user's normal behavior
+    (normal amounts, normal locations) to detect Stolen Cards or ATOs
     """
     logger.info(f"Agent requested history for client {client_id}")
     engine = await get_db_connection()
 
     try:
         async with engine.connect() as conn:
-            # Query the TimescaleDB hypertable
             query = text("""
                          SELECT transaction_id, amount, location, timestamp_iso, is_fraud
                          FROM transactions
@@ -57,62 +50,67 @@ async def get_user_history(client_id: int, limit: int = 5) -> str:
             result = await conn.execute(query, {"client_id": client_id, "limit": limit})
             history = [dict(row._mapping) for row in result]
 
+            if not history:
+                return json.dumps({"status": "no_history_found"})
+
             return json.dumps(history, default=str)
     except Exception as e:
-        return f"Error fetching history: {str(e)}"
+        return json.dumps({"error": f"Error fetching history: {str(e)}"})
     finally:
         await engine.dispose()
 
 
+# Tool 2: Impossible Travel Evaluator
 @mcp.tool()
-async def evaluate_impossible_travel(
-    client_id: int, current_location: str, current_timestamp_ms: int
-) -> str:
+async def evaluate_impossible_travel(client_id: int, current_location: str, current_timestamp_ms: int) -> str:
     """
     Evaluates if the user's current transaction location conflicts geographically
-    with their last known location in Redis, indicating a potential Account Takeover
+    with their last known location in the database
     """
     logger.info(f"Agent evaluating impossible travel for client {client_id}")
-    redis_client = await get_redis_client()
+    engine = await get_db_connection()
 
     try:
-        # Fetch the last known location from the Redis profile updated by the Validator
-        profile = await redis_client.hgetall(f"client:{client_id}:profile")
+        async with engine.connect() as conn:
+            # Get the very last transaction before this one
+            query = text("""
+                         SELECT location, timestamp_ms
+                         FROM transactions
+                         WHERE client_id = :client_id
+                           AND timestamp_ms < :current_timestamp_ms
+                         ORDER BY timestamp_ms DESC LIMIT 1
+                         """)
+            result = await conn.execute(query, {"client_id": client_id, "current_timestamp_ms": current_timestamp_ms})
+            row = result.fetchone()
 
-        if not profile or "last_location" not in profile:
-            return (
-                "Insufficient data: No previous location history found for this user."
-            )
+            if not row:
+                return json.dumps({"status": "Insufficient data: No previous location history found."})
 
-        last_location = profile["last_location"]
-        last_seen_ts = int(profile.get("last_seen_ts", 0))
+            last_location = row.location
+            last_seen_ts = row.timestamp_ms
+            time_diff_minutes = (current_timestamp_ms - last_seen_ts) / (1000 * 60)
 
-        time_diff_minutes = (current_timestamp_ms - last_seen_ts) / (1000 * 60)
-
-        # Here we would normally calculate actual Haversine distance between coords
-        # For now, we return the raw data so the LLM can reason about it
-        return json.dumps(
-            {
+            return json.dumps({
                 "previous_location": last_location,
                 "current_location": current_location,
                 "time_elapsed_minutes": round(time_diff_minutes, 2),
-                "assessment": "Agent must determine if travel between these coordinates is possible in the given time.",
-            }
-        )
+                "assessment": "Agent must determine if travel between these coordinates is possible in the given time."
+            })
+    except Exception as e:
+        return json.dumps({"error": f"Error calculating travel: {str(e)}"})
     finally:
-        await redis_client.close()
+        await engine.dispose()
 
 
+# Tool 3: Velocity & Smurfing Check
 @mcp.tool()
 async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> str:
     """
     Calculates the total transaction volume (sum of amounts) for a user over the last 24 hours
-    we use this tool to detect 'Smurfing' patterns where a user tries to stay just under reporting limits (like $10000)
+    Use this tool to detect 'Smurfing' patterns (staying just under $10000 reporting limits)
     """
     logger.info(f"Agent checking 24h velocity for client {client_id}")
     engine = await get_db_connection()
-
-    # 24 hours in milliseconds (24 * 60 * 60 * 1000)
     twenty_four_hours_ago = current_timestamp_ms - 86400000
 
     try:
@@ -124,53 +122,57 @@ async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> 
                            AND timestamp_ms >= :twenty_four_hours_ago
                            AND timestamp_ms <= :current_timestamp_ms
                          """)
-
-            result = await conn.execute(
-                query,
-                {
-                    "client_id": client_id,
-                    "twenty_four_hours_ago": twenty_four_hours_ago,
-                    "current_timestamp_ms": current_timestamp_ms,
-                },
-            )
-
-            # Fetch the first (and only) row
+            result = await conn.execute(query, {
+                "client_id": client_id,
+                "twenty_four_hours_ago": twenty_four_hours_ago,
+                "current_timestamp_ms": current_timestamp_ms,
+            })
             row = result.fetchone()
 
-            velocity_data = {
+            return json.dumps({
                 "client_id": client_id,
                 "time_window_hours": 24,
                 "transaction_count": row.transaction_count,
-                "total_volume": float(row.total_volume),
-                # We give the LLM a gentle hint if it's suspiciously close to 10k
-                "smurfing_risk_flag": 9000 <= float(row.total_volume) < 10000,
-            }
-
-            return json.dumps(velocity_data)
+                "total_volume": float(row.total_volume)
+            })
     except Exception as e:
-        return f"Error calculating velocity: {str(e)}"
+        return json.dumps({"error": f"Error calculating velocity: {str(e)}"})
     finally:
         await engine.dispose()
 
 
+# Tool 4: System Health Check (Observability)
 @mcp.tool()
-async def escalate_to_operator(
-    transaction_id: int, agent_reasoning: str, confidence_score: float
-) -> str:
+async def check_system_health() -> str:
     """
-    If the agent's confidence in accepting/rejecting the transaction is below threshold (for example, < 0.85),
-    use this tool to route the case to a human operator queue (with dashboard update)
+    Check the health of the Database and Redis cache
+    Use this if data is missing to determine if there is an IT infrastructure outage
     """
-    logger.warning(
-        f"Agent escalating transaction {transaction_id} (Confidence: {confidence_score})"
-    )
+    logger.info("Agent requested System Health Check")
+    health = {"postgres": "offline", "redis": "offline"}
 
-    # TODO: In the future, this tool could publish a message to the 'human-review-required' Kafka topic
+    # Check DB
+    try:
+        engine = await get_db_connection()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        health["postgres"] = "online"
+        await engine.dispose()
+    except Exception:
+        pass
 
-    return f"Success: Transaction {transaction_id} escalated to human operator. Reason logged: {agent_reasoning}"
+    # Check Redis
+    try:
+        redis_client = aioredis.from_url(f"redis://{settings.redis_host}:{settings.redis_port}")
+        await redis_client.ping()
+        await redis_client.close()
+        health["redis"] = "online"
+    except Exception:
+        pass
+
+    return json.dumps(health)
 
 
 if __name__ == "__main__":
-    # Start the FastMCP server
-    logger.info("Starting Fraud Detection MCP Server...")
+    logger.info("Starting Telemetry & Observability MCP Server...")
     mcp.run()
