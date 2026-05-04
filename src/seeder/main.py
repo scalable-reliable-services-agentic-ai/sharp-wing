@@ -177,7 +177,7 @@ def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_c
 
     # Transaction 2: Impossible travel to SE_ASIA 30 mins later
     t2 = Transaction()
-    t2.sender_id = t.sender_id
+    t2.client_id = t.client_id
     t2.transaction_id = (day_code * 1_000_000) + unique_id_counter
     t2.timestamp = t.timestamp + timedelta(minutes=30)
     t2.amount = round(random.uniform(5000.0, 15000.0), 2)
@@ -201,7 +201,7 @@ def generate_transactions(clients, target_rows):
 
         # Base Setup
         t = Transaction()
-        t.sender_id = client["client_id"]
+        t.client_id = client["client_id"]
         t.transaction_id = (day_code * 1_000_000) + unique_id_counter
         unique_id_counter += 1
 
@@ -246,7 +246,7 @@ def load_to_db(conn, transactions_data):
                     data["session_id"],
                     data["timestamp_ms"],
                     "PENDING",
-                    json.dumps([]),
+                    json.dumps({}),
                     ctype,
                     is_fraud,
                     fraud_reason,

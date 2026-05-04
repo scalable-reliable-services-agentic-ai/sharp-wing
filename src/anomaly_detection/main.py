@@ -19,8 +19,7 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
     is_anomaly = False
 
     amount = float(transaction.get("amount", 0.0))
-    sender_id = transaction.get("sender_id")
-    # Generator sets timestamp as ISO string, for example, "2026-05-02T14:30:00"
+    client_id = transaction.get("client_id")
     timestamp_str = transaction.get("timestamp_iso", "")
     location = transaction.get("location", "")
 
@@ -48,15 +47,15 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
          reasons.append(f"Location Tripwire: Transaction from high-risk or unexpected region ({location}). Needs LLM review.")
 
     # RULE 4: Standard Velocity Check
-    if sender_id:
-        redis_key = f"velocity:{sender_id}"
+    if client_id:
+        redis_key = f"velocity:{client_id}"
         current_count = await redis_client.incr(redis_key)
         if current_count == 1:
             await redis_client.expire(redis_key, 60) # 60 seconds window
 
         if current_count > 4:
             is_anomaly = True
-            reasons.append(f"Velocity Check: User {sender_id} attempted {current_count} transactions in 60s.")
+            reasons.append(f"Velocity Check: User {client_id} attempted {current_count} transactions in 60s.")
 
     return is_anomaly, reasons
 
@@ -87,7 +86,7 @@ async def main():
     consumer = AIOKafkaConsumer(
         IN_TOPIC,
         bootstrap_servers=settings.kafka_broker,
-        group_id="deterministic-anomaly-group",  # New group name!
+        group_id="deterministic-anomaly-group",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
         auto_offset_reset="earliest"
     )

@@ -89,23 +89,25 @@ async def main():
                         topic_name = tp.topic
 
                         if topic_name == settings.kafka_human_review_required_topic:
-                            tx_data["status"] = "ESCALATED"
+                            tx_data["current_state"] = "ESCALATED"
                         elif topic_name == settings.kafka_final_transactions_topic:
-                            tx_data["status"] = "AI_RESOLVED"
+                            tx_data["current_state"] = "AI_RESOLVED"
                         else:
-                            tx_data["status"] = "CLEARED_SYSTEM_1"
+                            tx_data["current_state"] = "CLEARED_SYSTEM_1"
 
-                        # Safely extract the reasoning dictionaries to json strings
-                        # Assuming your database has an 'agent_reasoning' string/json column
+                        # Extract the reasoning dictionaries
                         ai_eval = tx_data.pop("agentic_evaluation", {})
                         sys1_reasons = tx_data.pop("system_1_reasons", [])
 
-                        # Combine them into whatever field your DB expects (for example, agent_reasoning)
-                        if ai_eval or sys1_reasons:
-                            tx_data["agent_reasoning"] = json.dumps({
-                                "system_1": sys1_reasons,
-                                "system_2": ai_eval
-                            })
+                        # Safely ensure history is a dictionary (in case it's missing)
+                        if "history" not in tx_data or not isinstance(tx_data["history"], dict):
+                            tx_data["history"] = {}
+
+                        # ADD to the existing dictionary so we don't erase the validator's logs
+                        if sys1_reasons:
+                            tx_data["history"]["system_1"] = sys1_reasons
+                        if ai_eval:
+                            tx_data["history"]["system_2"] = ai_eval
 
                         buffer.append(tx_data)
 

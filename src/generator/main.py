@@ -8,7 +8,7 @@ from src.generator.transaction import Transaction
 
 logger = configure_logging(__name__)
 
-# --- Environment & Constants ---
+# Environment & Constants
 KAFKA_BROKER = settings.kafka_broker
 KAFKA_TOPIC = settings.kafka_raw_transactions_topic
 
@@ -82,7 +82,7 @@ def apply_persona(t: Transaction, client_type):
     return t
 
 
-# --- Connection Handlers ---
+# Connection Handlers
 async def get_kafka_producer():
     while True:
         try:
@@ -98,7 +98,7 @@ async def get_kafka_producer():
             await asyncio.sleep(5)
 
 
-# --- Main Application ---
+# Main Application
 async def main():
     # Load existing clients from the database once on startup
     existing_clients = fetch_existing_clients()
