@@ -74,22 +74,22 @@ class Settings(BaseSettings):
     def async_database_url(self) -> str:
         return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.db_host}/{self.postgres_db}"
 
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls,
-        init_settings,
-        env_settings,
-        dotenv_settings,
-        file_secret_settings,
-    ):
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            yaml_config_source,
-            file_secret_settings,
-        )
+    # @classmethod
+    # def settings_customise_sources(
+    #     cls,
+    #     settings_cls,
+    #     init_settings,
+    #     env_settings,
+    #     dotenv_settings,
+    #     file_secret_settings,
+    # ):
+    #     return (
+    #         init_settings,
+    #         env_settings,
+    #         dotenv_settings,
+    #         yaml_config_source,
+    #         file_secret_settings,
+    #     )
 
 
 settings = Settings()
