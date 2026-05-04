@@ -6,13 +6,13 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 import redis.asyncio as aioredis
+from src.config import settings
 
 # Dynamically find the project root and add it to Python's path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 sys.path.insert(0, project_root)
 
-from src.config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -62,7 +62,9 @@ async def get_user_history(client_id: int, limit: int = 5) -> str:
 
 # Tool 2: Impossible Travel Evaluator
 @mcp.tool()
-async def evaluate_impossible_travel(client_id: int, current_location: str, current_timestamp_ms: int) -> str:
+async def evaluate_impossible_travel(
+    client_id: int, current_location: str, current_timestamp_ms: int
+) -> str:
     """
     Evaluates if the user's current transaction location conflicts geographically
     with their last known location in the database
@@ -80,22 +82,29 @@ async def evaluate_impossible_travel(client_id: int, current_location: str, curr
                            AND timestamp_ms < :current_timestamp_ms
                          ORDER BY timestamp_ms DESC LIMIT 1
                          """)
-            result = await conn.execute(query, {"client_id": client_id, "current_timestamp_ms": current_timestamp_ms})
+            result = await conn.execute(
+                query,
+                {"client_id": client_id, "current_timestamp_ms": current_timestamp_ms},
+            )
             row = result.fetchone()
 
             if not row:
-                return json.dumps({"status": "Insufficient data: No previous location history found."})
+                return json.dumps(
+                    {"status": "Insufficient data: No previous location history found."}
+                )
 
             last_location = row.location
             last_seen_ts = row.timestamp_ms
             time_diff_minutes = (current_timestamp_ms - last_seen_ts) / (1000 * 60)
 
-            return json.dumps({
-                "previous_location": last_location,
-                "current_location": current_location,
-                "time_elapsed_minutes": round(time_diff_minutes, 2),
-                "assessment": "Agent must determine if travel between these coordinates is possible in the given time."
-            })
+            return json.dumps(
+                {
+                    "previous_location": last_location,
+                    "current_location": current_location,
+                    "time_elapsed_minutes": round(time_diff_minutes, 2),
+                    "assessment": "Agent must determine if travel between these coordinates is possible in the given time.",
+                }
+            )
     except Exception as e:
         return json.dumps({"error": f"Error calculating travel: {str(e)}"})
     finally:
@@ -122,19 +131,24 @@ async def evaluate_daily_velocity(client_id: int, current_timestamp_ms: int) -> 
                            AND timestamp_ms >= :twenty_four_hours_ago
                            AND timestamp_ms <= :current_timestamp_ms
                          """)
-            result = await conn.execute(query, {
-                "client_id": client_id,
-                "twenty_four_hours_ago": twenty_four_hours_ago,
-                "current_timestamp_ms": current_timestamp_ms,
-            })
+            result = await conn.execute(
+                query,
+                {
+                    "client_id": client_id,
+                    "twenty_four_hours_ago": twenty_four_hours_ago,
+                    "current_timestamp_ms": current_timestamp_ms,
+                },
+            )
             row = result.fetchone()
 
-            return json.dumps({
-                "client_id": client_id,
-                "time_window_hours": 24,
-                "transaction_count": row.transaction_count,
-                "total_volume": float(row.total_volume)
-            })
+            return json.dumps(
+                {
+                    "client_id": client_id,
+                    "time_window_hours": 24,
+                    "transaction_count": row.transaction_count,
+                    "total_volume": float(row.total_volume),
+                }
+            )
     except Exception as e:
         return json.dumps({"error": f"Error calculating velocity: {str(e)}"})
     finally:
@@ -163,7 +177,9 @@ async def check_system_health() -> str:
 
     # Check Redis
     try:
-        redis_client = aioredis.from_url(f"redis://{settings.redis_host}:{settings.redis_port}")
+        redis_client = aioredis.from_url(
+            f"redis://{settings.redis_host}:{settings.redis_port}"
+        )
         await redis_client.ping()
         await redis_client.close()
         health["redis"] = "online"

@@ -18,7 +18,7 @@ DATABASE_URL = settings.async_database_url
 TOPICS = [
     settings.kafka_noanomaly_transactions_topic,
     settings.kafka_final_transactions_topic,
-    settings.kafka_human_review_required_topic
+    settings.kafka_human_review_required_topic,
 ]
 
 
@@ -30,7 +30,9 @@ async def get_db_engine():
                 logger.info("Database connection established successfully")
                 return engine
         except Exception as e:
-            logger.error(f"Could not connect to database: {e}. Retrying in 5 seconds...")
+            logger.error(
+                f"Could not connect to database: {e}. Retrying in 5 seconds..."
+            )
             await asyncio.sleep(5)
 
 
@@ -42,11 +44,12 @@ async def setup_database(engine):
         async with engine.connect() as connection:
             await connection.execute(
                 text(
-                    "SELECT create_hypertable('transactions', 'timestamp_ms', if_not_exists => TRUE, chunk_time_interval => 86400000);")
+                    "SELECT create_hypertable('transactions', 'timestamp_ms', if_not_exists => TRUE, chunk_time_interval => 86400000);"
+                )
             )
             await connection.commit()
     except Exception as e:
-        pass
+        logger.error(f"Error setting up hypertable: {e}")
 
 
 async def get_kafka_consumer():
@@ -100,7 +103,9 @@ async def main():
                         sys1_reasons = tx_data.pop("system_1_reasons", [])
 
                         # Safely ensure history is a dictionary (in case it's missing)
-                        if "history" not in tx_data or not isinstance(tx_data["history"], dict):
+                        if "history" not in tx_data or not isinstance(
+                            tx_data["history"], dict
+                        ):
                             tx_data["history"] = {}
 
                         # ADD to the existing dictionary so we don't erase the validator's logs
@@ -112,7 +117,9 @@ async def main():
                         buffer.append(tx_data)
 
                 time_since_last_flush = time.time() - last_flush_time
-                if len(buffer) >= BATCH_SIZE or (time_since_last_flush > BATCH_INTERVAL and buffer):
+                if len(buffer) >= BATCH_SIZE or (
+                    time_since_last_flush > BATCH_INTERVAL and buffer
+                ):
                     async with engine.connect() as connection:
                         stmt = pg_insert(Transaction).values(buffer)
                         stmt = stmt.on_conflict_do_nothing(
