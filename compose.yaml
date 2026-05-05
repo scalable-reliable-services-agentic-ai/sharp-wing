@@ -20,9 +20,14 @@ services:
     networks:
       - monitoring
       - backend
-    volumes:
-      - ./config/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-      - grafana_data:/var/lib/grafana
+    # volumes:
+    #   - ./config/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    #   - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      # prometheus:
+        # # condition: service_completed_successfully
+        # condition: service_healthy
 
   node-exporter:
     image: prom/node-exporter:latest
@@ -256,7 +261,7 @@ services:
       context: .
       dockerfile: docker/reporter.Dockerfile
     ports:
-      - "5005:5000"
+      - "5005:5005"
     networks:
       - frontend
       - backend

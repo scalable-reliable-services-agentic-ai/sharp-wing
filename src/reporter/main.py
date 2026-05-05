@@ -1,4 +1,5 @@
 import json
+import os
 from collections import deque
 from datetime import datetime
 from flask import Flask, jsonify, render_template
@@ -130,5 +131,6 @@ def invalid():
 
 
 if __name__ == "__main__":
-    start_metrics_server(8005)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        start_metrics_server(8005)
+    app.run(host="0.0.0.0", port=5005, debug=True)
