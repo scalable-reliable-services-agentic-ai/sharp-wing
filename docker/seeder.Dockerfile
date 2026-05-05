@@ -19,4 +19,4 @@ COPY src/ /app/src
 # Set the python path to the root of the app
 ENV PYTHONPATH=/app
 
-CMD ["python", "-m", "src.seeder.main"]
+CMD ["python", "-u", "-m", "src.seeder.main"]

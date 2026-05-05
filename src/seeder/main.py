@@ -61,7 +61,7 @@ def generate_client_data(num_clients):
     for _ in range(num_clients):
         ctype = random.choices(persona_types, weights=weights, k=1)[0]
         clients.append(
-            {"client_id": random.randint(100_000, 999_999), "client_type": ctype}
+            {"sender_id": random.randint(100_000, 999_999), "client_type": ctype}
         )
     return clients
 
@@ -177,7 +177,7 @@ def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_c
 
     # Transaction 2: Impossible travel to SE_ASIA 30 mins later
     t2 = Transaction()
-    t2.client_id = t.client_id
+    t2.sender_id = t.sender_id
     t2.transaction_id = (day_code * 1_000_000) + unique_id_counter
     t2.timestamp = t.timestamp + timedelta(minutes=30)
     t2.amount = round(random.uniform(5000.0, 15000.0), 2)
@@ -201,7 +201,7 @@ def generate_transactions(clients, target_rows):
 
         # Base Setup
         t = Transaction()
-        t.client_id = client["client_id"]
+        t.sender_id = client["sender_id"]
         t.transaction_id = (day_code * 1_000_000) + unique_id_counter
         unique_id_counter += 1
 
@@ -232,7 +232,7 @@ def load_to_db(conn, transactions_data):
             formatted_rows.append(
                 (
                     data["transaction_id"],
-                    data["client_id"],
+                    data["sender_id"],
                     data["receiver_id"],
                     data["timestamp_iso"],
                     data["transaction_type"],

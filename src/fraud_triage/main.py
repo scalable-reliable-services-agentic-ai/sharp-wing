@@ -4,8 +4,6 @@ import asyncio
 from pathlib import Path
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from src.config import settings, configure_logging
-
-# The crucial async client we fixed earlier
 from openai import AsyncOpenAI
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -118,7 +116,7 @@ async def main():
 
     server_params = StdioServerParameters(
         command="python",
-        args=["-m", "src.mcp_server.server"],
+        args=["-m", "src.mcp_server.telemetry_observability"],
         env={**os.environ}
     )
     llm_client = AsyncOpenAI(api_key=MODEL_KEY, base_url=MODEL_PROXY)

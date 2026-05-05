@@ -70,14 +70,14 @@ async def process_message(message, producer, redis_client):
         transaction["history"] = {}
 
         # Real-time Client Profile Update
-        client_id = transaction["client_id"]
+        sender_id = transaction["sender_id"]
         amount = transaction["amount"]
         # Use a pipeline for atomic operations
         pipe = redis_client.pipeline()
-        pipe.lpush(f"client:{client_id}:amounts", amount)
-        pipe.ltrim(f"client:{client_id}:amounts", 0, 4)
+        pipe.lpush(f"client:{sender_id}:amounts", amount)
+        pipe.ltrim(f"client:{sender_id}:amounts", 0, 4)
         pipe.hset(
-            f"client:{client_id}:profile",
+            f"client:{sender_id}:profile",
             mapping={
                 "last_location": transaction["location"],
                 "last_ip": transaction["ip_address"],

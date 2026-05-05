@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS transactions
 (
     transaction_id BIGINT,
-    client_id BIGINT,
+    sender_id BIGINT,
     receiver_id BIGINT,
     timestamp_iso TEXT,
     transaction_type TEXT,

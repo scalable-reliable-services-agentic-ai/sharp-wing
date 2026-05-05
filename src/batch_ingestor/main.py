@@ -15,6 +15,7 @@ BATCH_INTERVAL = settings.batch_interval
 KAFKA_BROKER = settings.kafka_broker
 DATABASE_URL = settings.async_database_url
 
+# Environment and Constants
 TOPICS = [
     settings.kafka_noanomaly_transactions_topic,
     settings.kafka_final_transactions_topic,
