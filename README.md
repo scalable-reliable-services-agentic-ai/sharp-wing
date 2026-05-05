@@ -44,6 +44,41 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 <img width="400" height="651" alt="image" src="https://github.com/user-attachments/assets/8cdf5f3b-1955-43c6-9365-74a8e25da9e3" />
 
 
+## Remaining things
+(order does not matter)
+
+1. Infrastructure:
+    - Kubernetes
+        - and other staff related to that 
+    
+    - Prometheus & Grafana
+        - for observability, metrics and log managing
+
+1. Anomaly detection:
+    - Delete current LLM use in this service
+    - Create new deterministic module
+        - Mimic real advanced ML system with simple functions
+        - Add quick, simple functions to use in the service
+        - Copy some from other existing instances
+        - Make sure not to call the whole database. Adjust the Redis to have really fast responses
+
+1. Agents and MCP services
+
+    1. Triage & Diagnosis &mdash;
+    handles frauded transactions, can join autonomus decisions with *HITL*.
+        - Telemetry and Observability
+
+    1. Monitoring, Remediation & Escalation &mdash;
+    Monitors the status of the system and make decisions based on the system state.
+        - Remediation
+        - Policies
+
+1. Operational dashboards and human-in-the-loop services
+
+1. Controlled failure of system
+
+
+<!--
 ## TODO
 
 - [DONE] [Miki] Database setup and queue update
@@ -122,3 +157,4 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 
 - Maybe in anomaly detection modules there should be a few agents that check some things/attributes/cases simultaneously. Then some manager/master agent verifies all of these smaller agents, and then it decides a final verdict.
 The manager/master could have a LLM integrated and call other subagents by MCP (?)
+-->

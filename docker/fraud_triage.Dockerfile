@@ -19,4 +19,4 @@ COPY src/ /app/src
 # Set the python path to the root of the app
 ENV PYTHONPATH=/app
 
-CMD ["python", "-u", "-m", "src.reporter.main"]
+CMD ["python", "-u", "-m", "src.fraud_triage.main"]

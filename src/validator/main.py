@@ -7,14 +7,15 @@ from src.config import settings, configure_logging
 
 logger = configure_logging(__name__)
 
-# --- Environment Variables ---
+# Environment Variables
 KAFKA_BROKER = settings.kafka_broker
 IN_TOPIC = settings.kafka_raw_transactions_topic
-FINAL_TOPIC = settings.kafka_final_transactions_topic
+OUT_TOPIC_VALID = settings.kafka_validated_transactions_topic
+OUT_TOPIC_INVALID = settings.kafka_invalid_transactions_topic
 REDIS_HOST = settings.redis_host
 
 
-# --- Connection Handlers ---
+# Connection Handlers
 async def get_kafka_consumer():
     while True:
         try:
@@ -60,24 +61,23 @@ async def get_redis_connection():
             await asyncio.sleep(5)
 
 
-# --- Core Logic ---
+# Core Logic
 async def process_message(message, producer, redis_client):
     try:
         transaction = message.value
 
-        # Add initial state and history
         transaction["current_state"] = "received"
-        transaction["history"] = []
+        transaction["history"] = {}
 
-        # --- Real-time Client Profile Update ---
-        client_id = transaction["client_id"]
+        # Real-time Client Profile Update
+        sender_id = transaction["sender_id"]
         amount = transaction["amount"]
         # Use a pipeline for atomic operations
         pipe = redis_client.pipeline()
-        pipe.lpush(f"client:{client_id}:amounts", amount)
-        pipe.ltrim(f"client:{client_id}:amounts", 0, 4)
+        pipe.lpush(f"client:{sender_id}:amounts", amount)
+        pipe.ltrim(f"client:{sender_id}:amounts", 0, 4)
         pipe.hset(
-            f"client:{client_id}:profile",
+            f"client:{sender_id}:profile",
             mapping={
                 "last_location": transaction["location"],
                 "last_ip": transaction["ip_address"],
@@ -86,7 +86,7 @@ async def process_message(message, producer, redis_client):
         )
         await pipe.execute()
 
-        # --- Validation Logic ---
+        # Validation Logic
         min_amount = settings.validator_min_amount
         max_amount = settings.validator_max_amount
         is_valid = min_amount < transaction["amount"] < max_amount
@@ -96,30 +96,26 @@ async def process_message(message, producer, redis_client):
             else f"Amount outside of valid range ({min_amount}-{max_amount})"
         )
 
-        # --- Routing ---
+        # Routing
         if is_valid:
             transaction["current_state"] = "clean"
-            transaction["history"].append(
-                {
-                    "service": "validator",
-                    "decision": "clean",
-                    "ts": int(time.time() * 1000),
-                }
-            )
-            await producer.send_and_wait(FINAL_TOPIC, transaction)
+            # Log as a dictionary key instead of append
+            transaction["history"]["validator"] = {
+                "decision": "clean",
+                "ts": int(time.time() * 1000)
+            }
+            await producer.send_and_wait(OUT_TOPIC_VALID, transaction)
             await redis_client.incr("total_validated_realtime")
             logger.info(f"Validated transaction {transaction['transaction_id']}: OK")
         else:
             transaction["current_state"] = "invalid"
-            transaction["history"].append(
-                {
-                    "service": "validator",
-                    "decision": "invalid",
-                    "reason": reason,
-                    "ts": int(time.time() * 1000),
-                }
-            )
-            await producer.send_and_wait(FINAL_TOPIC, transaction)
+            # Log as a dictionary key instead of append
+            transaction["history"]["validator"] = {
+                "decision": "invalid",
+                "reason": reason,
+                "ts": int(time.time() * 1000)
+            }
+            await producer.send_and_wait(OUT_TOPIC_INVALID, transaction)
             pipe = redis_client.pipeline()
             pipe.incr("total_invalid_realtime")
             pipe.lpush("recent_invalid_transactions", json.dumps(transaction))
@@ -135,7 +131,7 @@ async def process_message(message, producer, redis_client):
         logger.error(f"An unexpected error occurred while processing message: {e}")
 
 
-# --- Main Application Runner ---
+# Main Application Runner
 async def main():
     # Initialize connections
     consumer = await get_kafka_consumer()

@@ -1,4 +1,25 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import yaml
+from typing import Any, Dict
+
+
+def yaml_config_source(*args, **kwargs) -> Dict[str, Any]:
+    """
+    A settings source that loads variables from the specific llm.yaml file.
+    """
+    try:
+        with open("config/llm.yaml", "r") as f:
+            data = yaml.safe_load(f) or {}
+        config_data = {
+            "litellm_proxy_url": data.get("LITELLM_PROXY_URL"),
+            "litellm_gemini_model": data.get("MODEL", {}).get("gemini", {}).get("name"),
+            "litellm_mistral_model": data.get("MODEL", {})
+            .get("mistral", {})
+            .get("name"),
+        }
+        return {k: v for k, v in config_data.items() if v is not None}
+    except (FileNotFoundError, yaml.YAMLError):
+        return {}
 
 
 class Settings(BaseSettings):
@@ -10,6 +31,9 @@ class Settings(BaseSettings):
     kafka_broker: str
     kafka_raw_transactions_topic: str
     kafka_validated_transactions_topic: str
+    kafka_invalid_transactions_topic: str
+    kafka_noanomaly_transactions_topic: str
+    kafka_anomaly_detected_transactions_topic: str
     kafka_human_review_required_topic: str
     kafka_final_transactions_topic: str
 
@@ -36,6 +60,12 @@ class Settings(BaseSettings):
     validator_min_amount: int
     validator_max_amount: int
 
+    # LiteLLM Configuration
+    litellm_proxy_url: str
+    litellm_api_key: str
+    litellm_gemini_model: str
+    litellm_mistral_model: str
+
     @property
     def database_url(self) -> str:
         return f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}@{self.db_host}/{self.postgres_db}"
@@ -43,6 +73,23 @@ class Settings(BaseSettings):
     @property
     def async_database_url(self) -> str:
         return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.db_host}/{self.postgres_db}"
+
+    # @classmethod
+    # def settings_customise_sources(
+    #     cls,
+    #     settings_cls,
+    #     init_settings,
+    #     env_settings,
+    #     dotenv_settings,
+    #     file_secret_settings,
+    # ):
+    #     return (
+    #         init_settings,
+    #         env_settings,
+    #         dotenv_settings,
+    #         yaml_config_source,
+    #         file_secret_settings,
+    #     )
 
 
 settings = Settings()

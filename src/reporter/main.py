@@ -1,4 +1,5 @@
 import json
+from collections import deque
 from datetime import datetime
 from flask import Flask, jsonify, render_template
 from sqlalchemy import create_engine, func, inspect
@@ -7,7 +8,7 @@ import redis
 from src.config import settings
 from src.database.models import Transaction
 
-# --- Environment & DB Setup ---
+# Environment and DB Setup
 DATABASE_URL = settings.database_url
 REDIS_HOST = settings.redis_host
 
@@ -15,13 +16,51 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-# --- Flask App ---
+# Flask App
 app = Flask(__name__)
 start_time_dt = datetime.now()
+
+# State for TPS Calculation
+transaction_times = deque()
+last_check_time = datetime.now()
+last_total_verified = 0
 
 
 def get_redis_connection():
     return redis.Redis(host=REDIS_HOST, port=settings.redis_port, decode_responses=True)
+
+
+def calculate_tps_from_last_minute(total_verified: int):
+    global last_check_time, last_total_verified, transaction_times
+
+    # Calculate TPS over the last minute
+    current_time = datetime.now()
+    new_transactions = total_verified - last_total_verified
+
+    if new_transactions > 0:
+        # Record a timestamp for each new transaction to get a more accurate TPS
+        for _ in range(new_transactions):
+            transaction_times.append(current_time)
+
+    # Remove timestamps older than 60 seconds
+    while (
+        transaction_times and (current_time - transaction_times[0]).total_seconds() > 60
+    ):
+        transaction_times.popleft()
+
+    # Calculate TPS based on the number of transactions in the last minute
+    time_window = (current_time - start_time_dt).total_seconds()
+
+    if time_window < 60:
+        # If the app has been running for less than a minute, use the total elapsed time
+        avg_tps = len(transaction_times) / time_window if time_window > 0 else 0
+    else:
+        # Otherwise, calculate TPS over the last 60 seconds
+        avg_tps = len(transaction_times) / 60.0
+
+    # Update state for next calculation
+    last_total_verified = total_verified
+    return avg_tps
 
 
 @app.route("/")
@@ -35,7 +74,6 @@ def data():
     historical_invalid = 0
     try:
         db = SessionLocal()
-        # Check if the table exists first
         inspector = inspect(db.get_bind())
         if inspector.has_table("transactions"):
             historical_total = (
@@ -48,8 +86,7 @@ def data():
                 or 0
             )
     except Exception:
-        # This will catch connection errors if the DB isn't fully ready
-        pass  # Defaults will be used
+        pass
     finally:
         if "db" in locals():
             db.close()
@@ -62,8 +99,7 @@ def data():
     invalid_count = historical_invalid + realtime_invalid
     correct_count = total_verified - invalid_count
 
-    time_elapsed = (datetime.now() - start_time_dt).total_seconds()
-    avg_tps = total_verified / time_elapsed if time_elapsed > 0 else 0
+    avg_tps = calculate_tps_from_last_minute(total_verified=total_verified)
 
     return jsonify(
         start_time=start_time_dt.strftime("%Y-%m-%d %H:%M:%S"),
