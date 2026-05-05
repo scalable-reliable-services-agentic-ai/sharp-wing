@@ -4,8 +4,24 @@ import asyncio
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import redis.asyncio as aioredis
 from src.config import settings, configure_logging
+from prometheus_client import Counter
+from src.prometheus_metrics.metrics import start_metrics_server
 
 logger = configure_logging(__name__)
+
+
+# --- Metrics Definition ---
+VALID_TRANSACTIONS_CNT = Counter(
+    "valid_transactions", "Number of transactions that passed validation"
+)
+INVALID_TRANSACTIONS_CNT = Counter(
+    "invalid_transactions", "Number of transactions that failed validation"
+)
+TOTAL_VALIDATED_TRANSACTIONS_CNT = Counter(
+    "total_validated_transactions",
+    "Total number of transactions that has been validated",
+)
+
 
 # Environment Variables
 KAFKA_BROKER = settings.kafka_broker
@@ -61,6 +77,24 @@ async def get_redis_connection():
             await asyncio.sleep(5)
 
 
+def _is_valid_amount(
+    amount: int | float, min_val: int | float, max_val: int | float
+) -> bool:
+    return min_val < amount < max_val
+
+
+def is_valid_check(amount: int | float) -> tuple[bool, str]:
+    min_amount = settings.validator_min_amount
+    max_amount = settings.validator_max_amount
+
+    isvalid = _is_valid_amount(amount, min_amount, max_amount)
+    reason = (
+        "" if isvalid else f"Amount outside of valid range ({min_amount}-{max_amount})"
+    )
+
+    return isvalid, reason
+
+
 # Core Logic
 async def process_message(message, producer, redis_client):
     try:
@@ -68,11 +102,9 @@ async def process_message(message, producer, redis_client):
 
         transaction["current_state"] = "received"
         transaction["history"] = {}
-
-        # Real-time Client Profile Update
         client_id = transaction["client_id"]
         amount = transaction["amount"]
-        # Use a pipeline for atomic operations
+
         pipe = redis_client.pipeline()
         pipe.lpush(f"client:{client_id}:amounts", amount)
         pipe.ltrim(f"client:{client_id}:amounts", 0, 4)
@@ -86,44 +118,42 @@ async def process_message(message, producer, redis_client):
         )
         await pipe.execute()
 
-        # Validation Logic
-        min_amount = settings.validator_min_amount
-        max_amount = settings.validator_max_amount
-        is_valid = min_amount < transaction["amount"] < max_amount
-        reason = (
-            ""
-            if is_valid
-            else f"Amount outside of valid range ({min_amount}-{max_amount})"
-        )
+        is_valid, reason = is_valid_check(amount=transaction["amount"])
 
         # Routing
         if is_valid:
             transaction["current_state"] = "clean"
-            # Log as a dictionary key instead of append
             transaction["history"]["validator"] = {
                 "decision": "clean",
-                "ts": int(time.time() * 1000)
+                "ts": int(time.time() * 1000),
             }
             await producer.send_and_wait(OUT_TOPIC_VALID, transaction)
             await redis_client.incr("total_validated_realtime")
+            VALID_TRANSACTIONS_CNT.inc()
             logger.info(f"Validated transaction {transaction['transaction_id']}: OK")
+
         else:
             transaction["current_state"] = "invalid"
-            # Log as a dictionary key instead of append
             transaction["history"]["validator"] = {
                 "decision": "invalid",
                 "reason": reason,
-                "ts": int(time.time() * 1000)
+                "ts": int(time.time() * 1000),
             }
             await producer.send_and_wait(OUT_TOPIC_INVALID, transaction)
+
             pipe = redis_client.pipeline()
             pipe.incr("total_invalid_realtime")
             pipe.lpush("recent_invalid_transactions", json.dumps(transaction))
             pipe.ltrim("recent_invalid_transactions", 0, 99)
+
             await pipe.execute()
+            INVALID_TRANSACTIONS_CNT.inc()
+
             logger.warning(
                 f"Validated transaction {transaction['transaction_id']}: INVALID - {reason}"
             )
+
+        TOTAL_VALIDATED_TRANSACTIONS_CNT.inc()
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to decode message: {message.value}. Error: {e}")
@@ -150,4 +180,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    start_metrics_server(8001)
     asyncio.run(main())

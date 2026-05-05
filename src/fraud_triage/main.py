@@ -10,7 +10,23 @@ from openai import AsyncOpenAI
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from prometheus_client import Counter
+from src.prometheus_metrics.metrics import start_metrics_server
+
 logger = configure_logging(__name__)
+
+
+# --- Metrics Definition ---
+HUMAN_REVIEW_CNT = Counter(
+    "human_review_required_transactions",
+    "Number of transactions requiring human review",
+)
+
+AUTO_PROCESSED_CNT = Counter(
+    "auto_processed_transactions",
+    "Number of transactions automatically processed by the agent",
+)
+
 
 MODEL_PROXY = settings.litellm_proxy_url
 MODEL_KEY = settings.litellm_api_key
@@ -29,14 +45,16 @@ OUT_FINAL_TOPIC = settings.kafka_final_transactions_topic
 
 async def triage_transaction(message, producer, session, openai_tools, llm_client):
     transaction_data = message.value
-    tx_id = transaction_data.get('transaction_id')
+    tx_id = transaction_data.get("transaction_id")
     logger.info(f"Agent investigating transaction: {tx_id}")
-    logger.info(f"System 1 Reasons: {transaction_data.get('system_1_reasons', 'Unknown')}")
+    logger.info(
+        f"System 1 Reasons: {transaction_data.get('system_1_reasons', 'Unknown')}"
+    )
 
     try:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(transaction_data)}
+            {"role": "user", "content": json.dumps(transaction_data)},
         ]
 
         # The Tool Calling Loop with Economic Guardrails
@@ -65,21 +83,27 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                 logger.info(f"Agent requested tool: {tool_name} with args {tool_args}")
                 result = await session.call_tool(tool_name, arguments=tool_args)
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": result.content[0].text
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": result.content[0].text,
+                    }
+                )
 
             current_step += 1
 
         # If the loop maxed out, force a human escalation
         if current_step >= max_steps:
-            logger.warning(f"Agent exceeded max reasoning steps ({max_steps}). Forcing Human Escalation.")
+            logger.warning(
+                f"Agent exceeded max reasoning steps ({max_steps}). Forcing Human Escalation."
+            )
             # Force the LLM output to demand human review
-            llm_output = {"requires_human_review": True,
-                          "reasoning": "Exceeded maximum reasoning steps. Possible loop detected."}
+            llm_output = {
+                "requires_human_review": True,
+                "reasoning": "Exceeded maximum reasoning steps. Possible loop detected.",
+            }
         else:
             # Final Parse if it finished naturally
             llm_output = json.loads(response_message.content)
@@ -90,8 +114,10 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         # Route based on the LLM's confidence
         if llm_output.get("requires_human_review", True):
             await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
+            HUMAN_REVIEW_CNT.inc()
         else:
             await producer.send_and_wait(OUT_FINAL_TOPIC, transaction_data)
+            AUTO_PROCESSED_CNT.inc()
 
     except Exception as e:
         logger.error(f"Error during LLM triage: {e}")
@@ -117,9 +143,7 @@ async def main():
     logger.info(f"System 2 LLM Triage Agent listening on: {IN_TOPIC}")
 
     server_params = StdioServerParameters(
-        command="python",
-        args=["-m", "src.mcp_server.server"],
-        env={**os.environ}
+        command="python", args=["-m", "src.mcp_server.server"], env={**os.environ}
     )
     llm_client = AsyncOpenAI(api_key=MODEL_KEY, base_url=MODEL_PROXY)
 
@@ -129,13 +153,23 @@ async def main():
                 await session.initialize()
                 mcp_tools = await session.list_tools()
 
-                openai_tools = [{"type": "function", "function": {"name": t.name, "description": t.description,
-                                                                  "parameters": t.inputSchema}} for t in
-                                mcp_tools.tools]
+                openai_tools = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.inputSchema,
+                        },
+                    }
+                    for t in mcp_tools.tools
+                ]
                 logger.info("MCP Server initialized and tools loaded successfully.")
 
                 async for message in consumer:
-                    await triage_transaction(message, producer, session, openai_tools, llm_client)
+                    await triage_transaction(
+                        message, producer, session, openai_tools, llm_client
+                    )
 
     except Exception as e:
         logger.error(f"Fatal error in main loop: {e}")
@@ -145,4 +179,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    start_metrics_server(8003)
     asyncio.run(main())

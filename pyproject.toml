@@ -20,4 +20,5 @@ dependencies = [
     "litellm",
     "openai",
     "fastmcp",
+    "prometheus-client",
 ]

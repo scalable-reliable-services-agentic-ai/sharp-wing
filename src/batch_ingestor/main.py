@@ -8,6 +8,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from src.config import settings, configure_logging
 from src.database.models import Base, Transaction
 
+from prometheus_client import Counter
+from src.prometheus_metrics.metrics import start_metrics_server
+
 logger = configure_logging(__name__)
 
 BATCH_SIZE = settings.batch_size
@@ -20,6 +23,12 @@ TOPICS = [
     settings.kafka_final_transactions_topic,
     settings.kafka_human_review_required_topic,
 ]
+
+# --- Metrics Definition ---
+INSERTED_TRANSACTIONS_CNT = Counter(
+    "inserted_transactions",
+    "Number of transactions inserted/ingested into the database",
+)
 
 
 async def get_db_engine():
@@ -116,6 +125,7 @@ async def main():
 
                         buffer.append(tx_data)
 
+                INSERTED_TRANSACTIONS_CNT.inc(len(result))
                 time_since_last_flush = time.time() - last_flush_time
                 if len(buffer) >= BATCH_SIZE or (
                     time_since_last_flush > BATCH_INTERVAL and buffer
@@ -141,4 +151,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    start_metrics_server(8004)
     asyncio.run(main())

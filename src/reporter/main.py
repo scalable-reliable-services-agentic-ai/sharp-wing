@@ -8,6 +8,15 @@ import redis
 from src.config import settings
 from src.database.models import Transaction
 
+from prometheus_client import Gauge
+from src.prometheus_metrics.metrics import start_metrics_server
+
+AVERAGE_TPS = Gauge(
+    "average_transactions_per_second",
+    "Average number of incoming transactions per second",
+)
+
+
 # --- Environment & DB Setup ---
 DATABASE_URL = settings.database_url
 REDIS_HOST = settings.redis_host
@@ -57,6 +66,7 @@ def calculate_tps_from_last_minute(total_verified: int):
     else:
         # Otherwise, calculate TPS over the last 60 seconds
         avg_tps = len(transaction_times) / 60.0
+    AVERAGE_TPS.set(avg_tps)
 
     # Update state for next calculation
     last_total_verified = total_verified
@@ -120,4 +130,5 @@ def invalid():
 
 
 if __name__ == "__main__":
+    start_metrics_server(8005)
     app.run(host="0.0.0.0", port=5000, debug=True)

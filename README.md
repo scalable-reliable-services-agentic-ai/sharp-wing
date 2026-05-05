@@ -35,7 +35,15 @@ and
 `http://localhost:5003/`
 
 
+## Observability
+
+This project uses Prometheus and Grafana for observability. You can access the Grafana dashboard and Prometheus UI at the following URLs:
+
+- **Grafana:** [http://localhost:3000](http://localhost:3000)
+- **Prometheus:** [http://localhost:9090](http://localhost:9090)
+
 ## Progress
+
 
 [13.04]
 
