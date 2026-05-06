@@ -13,6 +13,17 @@ OUT_SAFE_TOPIC = settings.kafka_noanomaly_transactions_topic
 OUT_ANOMALY_TOPIC = settings.kafka_anomaly_detected_transactions_topic
 
 
+def is_safe_location(lat: float, lon: float) -> bool:
+    """Checks if coordinates fall within expected baseline regions (Italy/US)"""
+    # IT Bounding Box (approx 36 to 47 Lat, 6 to 18.5 Lon)
+    if (36.0 <= lat <= 48.0) and (6.0 <= lon <= 19.0):
+        return True
+    # US Bounding Box (approx 25 to 49 Lat, -125 to -66 Lon)
+    if (24.0 <= lat <= 50.0) and (-126.0 <= lon <= -65.0):
+        return True
+    return False
+
+
 async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[bool, list[str]]:
     """Evaluates deterministic rules tailored to the seeder personas"""
     reasons = []
@@ -25,9 +36,10 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
 
     # Extract the hour from the timestamp for behavioral checks
     try:
-        tx_hour = datetime.fromisoformat(timestamp_str).hour
-    except ValueError:
-        tx_hour = 12 # Default fallback
+        clean_ts = timestamp_str.replace("Z", "+00:00")
+        tx_hour = datetime.fromisoformat(clean_ts).hour
+    except (ValueError, AttributeError):
+        tx_hour = 12  # Default fallback
 
     # RULE 1: Smurfing Check (Catches Fraud_Smurfing)
     if 9900 <= amount <= 9999:
@@ -41,17 +53,26 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
         reasons.append(f"ATO Check: Massive transfer (${amount}) initiated at suspicious hour ({tx_hour}:00).")
 
     # RULE 3: Geolocation Tripwire (Catches StolenCard & ImpossibleTravel)
-    # If it's not a standard IT/US coordinate, flag it for LLM review
-    if "SE_ASIA" in location or "GLOBAL" in location:
-         is_anomaly = True
-         reasons.append(f"Location Tripwire: Transaction from high-risk or unexpected region ({location}). Needs LLM review.")
+    # Parse the lat/lon and check against safe bounding boxes
+    try:
+        if location and "," in location:
+            lat_str, lon_str = location.split(",")
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            if not is_safe_location(lat, lon):
+                is_anomaly = True
+                reasons.append(
+                    f"Location Tripwire: Coordinates ({lat}, {lon}) fall outside standard safe operating regions (IT/US).")
+    except Exception as e:
+        logger.warning(f"Failed to parse location '{location}': {e}")
 
     # RULE 4: Standard Velocity Check
     if sender_id:
         redis_key = f"velocity:{sender_id}"
         current_count = await redis_client.incr(redis_key)
         if current_count == 1:
-            await redis_client.expire(redis_key, 60) # 60 seconds window
+            await redis_client.expire(redis_key, 60)  # 60 seconds window
 
         if current_count > 4:
             is_anomaly = True

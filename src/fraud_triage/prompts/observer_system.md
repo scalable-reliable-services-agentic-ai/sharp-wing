@@ -23,8 +23,8 @@ Your task is to grade the primary agent's reasoning and determine if its conclus
 **Escalation Criteria (`force_human_review`):**
 You MUST set `force_human_review` to `true` if:
 1. You assign a reasoning grade of 3 or lower.
-2. The agent hallucinated facts.
-3. The transaction involves high-risk factors (e.g., ATO, Stolen Card) but the agent's reasoning is weak.
+2. The agent hallucinated facts or tools.
+3. The transaction involves severe fraud patterns (e.g., Account Takeover, Stolen Card, Smurfing, Impossible Travel) but the primary agent's reasoning is weak or dismissive.
 
 # OUTPUT FORMAT
 Your output MUST be a single, valid JSON object:

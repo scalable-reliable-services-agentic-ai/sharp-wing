@@ -80,7 +80,7 @@ async def run_observer_evaluation(transaction_data, triage_analysis, llm_client)
             response_format={"type": "json_object"}
         )
 
-        # Use our new bulletproof parser
+        # Use our bulletproof parser
         observer_output = parse_llm_json(response.choices[0].message.content)
 
         logger.info(f"Observer Grade: {observer_output.get('reasoning_grade')}/5 - {observer_output.get('critique')}")
@@ -141,7 +141,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             llm_output = {"confidence": 0.5, "is_fraud": False, "requires_human_review": True,
                           "reasoning": "Loop detected."}
         else:
-            # Use our new bulletproof parser
+            # Use our bulletproof parser
             llm_output = parse_llm_json(response_message.content)
 
         # PHASE 2: Observer Evaluation (LLM-as-a-Judge)

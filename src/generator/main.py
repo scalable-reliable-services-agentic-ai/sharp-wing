@@ -40,9 +40,39 @@ def fetch_existing_clients():
         return []
 
 
+def generate_realistic_location(client_type):
+    """Generates coordinates based on an 80/20 safe-zone distribution with diverse high-risk regions"""
+
+    # 1. Diverse High-Risk Zones for Fraud Personas
+    if client_type in ["Fraud_StolenCard", "Fraud_ImpossibleTravel"]:
+        # Randomly pick a bounding box from various global regions
+        high_risk_zones = [
+            f"{random.uniform(-10.0, 20.0)}, {random.uniform(95.0, 140.0)}",  # SE Asia
+            f"{random.uniform(-35.0, 35.0)}, {random.uniform(-17.0, 51.0)}",  # Africa
+            f"{random.uniform(40.0, 60.0)}, {random.uniform(20.0, 50.0)}",  # Eastern Europe
+            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}"  # South America
+        ]
+        return random.choice(high_risk_zones)
+
+    # 2. 80% chance for normal personas to be in Safe Zones
+    if random.random() < 0.80:
+        # Split 50/50 between Italy and US
+        if random.random() < 0.50:
+            return f"{random.uniform(36.5, 47.0)}, {random.uniform(6.5, 18.5)}"  # Italy Box
+        else:
+            return f"{random.uniform(25.0, 49.0)}, {random.uniform(-125.0, -66.0)}"  # US Box
+
+    # 3. 20% chance for normal personas to be traveling (creates healthy false positives for AI)
+    return f"{random.uniform(-90.0, 90.0)}, {random.uniform(-180.0, 180.0)}"
+
+
 def apply_persona(t: Transaction, client_type):
-    """Applies behavior patterns and explicit fraud labeling to a transaction"""
+    """Applies behavior patterns, realistic locations, and explicit fraud labeling"""
     t.client_type = client_type
+
+    # Apply the realistic location override
+    t.geolocation = generate_realistic_location(client_type)
+    t.location = t.geolocation  # Ensure both properties match just in case
 
     # Legitimate personas
     if client_type == "Standard":
