@@ -27,9 +27,11 @@ You MUST set `force_human_review` to `true` if:
 3. The transaction involves severe fraud patterns (e.g., Account Takeover, Stolen Card, Smurfing, Impossible Travel) but the primary agent's reasoning is weak or dismissive.
 
 # OUTPUT FORMAT
-Your output MUST be a single, valid JSON object:
+You MUST output your evaluation strictly as a JSON object with the following schema:
 {
-  "reasoning_grade": int, 
-  "critique": "A brief 1-2 sentence explanation of why you gave this grade.",
-  "force_human_review": boolean
+  "reasoning_grade": <integer between 1 and 5, where 5 is flawless logic and 1 is a severe hallucination/error>,
+  "critique": "<string containing a concise, 1-2 sentence explanation of why you gave this grade>",
+  "force_human_review": <boolean. Set to true ONLY if the primary agent made a critical error or hallucinated tool outputs. Otherwise false.>
 }
+
+Do not include markdown tags, code blocks, or conversational text. Output pure JSON only.
