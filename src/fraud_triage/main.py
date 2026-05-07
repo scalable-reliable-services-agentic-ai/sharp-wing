@@ -58,12 +58,13 @@ def parse_llm_json(raw_text: str) -> dict:
         raise e
 
 
-async def run_observer_evaluation(transaction_data, triage_analysis, llm_client):
+async def run_observer_evaluation(transaction_data, triage_analysis, tool_history, llm_client):
     """LLM-as-a-Judge: Evaluates the Triage Agent's reasoning"""
     logger.info(f"Observer Agent evaluating triage logic for TX: {transaction_data.get('transaction_id')}")
 
     payload = {
         "transaction_data": transaction_data,
+        "investigation_history": str(tool_history),
         "triage_analysis": triage_analysis
     }
 
@@ -145,7 +146,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             llm_output = parse_llm_json(response_message.content)
 
         # PHASE 2: Observer Evaluation (LLM-as-a-Judge)
-        observer_output = await run_observer_evaluation(transaction_data, llm_output, llm_client)
+        observer_output = await run_observer_evaluation(transaction_data, llm_output, messages, llm_client)
 
         transaction_data["agentic_evaluation"] = llm_output
         transaction_data["observer_evaluation"] = observer_output

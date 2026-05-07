@@ -29,10 +29,26 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
     reasons = []
     is_anomaly = False
 
-    amount = float(transaction.get("amount", 0.0))
+    amount_raw = float(transaction.get("amount", 0.0))
+    currency = transaction.get("currency", "USD").upper()  # Fallback to USD if missing
     sender_id = transaction.get("sender_id")
     timestamp_str = transaction.get("timestamp_iso", "")
     location = transaction.get("location", "")
+
+    # --- CURRENCY NORMALIZATION ---
+    # Fast, hardcoded rates for System 1 triage (in a real app, you'd fetch these from Redis/API)
+    exchange_rates = {
+        "USD": 1.0,
+        "EUR": 1.08,
+        "GBP": 1.25,
+        "JPY": 0.0065,
+        "CAD": 0.73,
+        "AUD": 0.65
+    }
+
+    # Calculate the USD equivalent for our tripwire logic
+    rate = exchange_rates.get(currency, 1.0)
+    amount_usd = amount_raw * rate
 
     # Extract the hour from the timestamp for behavioral checks
     try:
@@ -41,19 +57,19 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
     except (ValueError, AttributeError):
         tx_hour = 12  # Default fallback
 
-    # RULE 1: Smurfing Check (Catches Fraud_Smurfing)
-    if 9900 <= amount <= 9999:
+    # RULE 1: Smurfing Check (Use amount_usd!)
+    if 9900 <= amount_usd <= 9999:
         is_anomaly = True
-        reasons.append(f"Smurfing Check: Amount ${amount} is designed to evade 10k reporting.")
+        reasons.append(
+            f"Smurfing Check: Amount ({amount_raw} {currency} = ${amount_usd:.2f} USD) is designed to evade 10k reporting.")
 
-    # RULE 2: Time-Based Massive Drain (Catches Fraud_ATO)
-    # VIPs/Corporate do large amounts, but NOT at 3 AM
-    if amount >= 20000 and (tx_hour <= 4 or tx_hour >= 23):
+    # RULE 2: Time-Based Massive Drain (Use amount_usd!)
+    if amount_usd >= 20000 and (tx_hour <= 4 or tx_hour >= 23):
         is_anomaly = True
-        reasons.append(f"ATO Check: Massive transfer (${amount}) initiated at suspicious hour ({tx_hour}:00).")
+        reasons.append(
+            f"ATO Check: Massive transfer ({amount_raw} {currency} = ${amount_usd:.2f} USD) initiated at suspicious hour ({tx_hour}:00).")
 
     # RULE 3: Geolocation Tripwire (Catches StolenCard & ImpossibleTravel)
-    # Parse the lat/lon and check against safe bounding boxes
     try:
         if location and "," in location:
             lat_str, lon_str = location.split(",")
