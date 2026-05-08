@@ -1,23 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, CheckCircle, AlertTriangle, Activity, Database, Users, Loader2, MapPin } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, CheckCircle, AlertTriangle, Activity, Database, Users, Loader2, MapPin, Lock, User } from 'lucide-react';
 
 export default function App() {
-  const [queue, setQueue] = useState([]);
-  const [kpis, setKpis] = useState({ total_processed: 0, auto_denied: 0, automation_rate: "0%" });
-  const [selectedTx, setSelectedTx] = useState(null);
-  const [country, setCountry] = useState("Locating..."); // New state for Country name
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
 
-  const [loading, setLoading] = useState(true);
+  const [queue, setQueue] = useState([]);
+  const [kpis, setKpis] = useState({ total_processed: 0, auto_denied: 0, auto_approved: 0, automation_rate: "0%" });
+  const [selectedTx, setSelectedTx] = useState(null);
+  const [country, setCountry] = useState("Locating...");
+
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // 1. FETCH DATA ON LOAD
+  // 1. FETCH DATA ON LOAD (IF LOGGED IN)
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (token) {
+      fetchData();
+    }
+  }, [token]);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/queue');
+      const response = await fetch('http://localhost:8000/api/queue', {
+        headers: { 'Authorization': `Bearer ${token}` } // Send JWT
+      });
+
+      if (response.status === 401) {
+        handleLogout();
+        throw new Error('Session expired. Please log in again.');
+      }
       if (!response.ok) throw new Error('Failed to connect to backend API');
 
       const data = await response.json();
@@ -27,23 +42,58 @@ export default function App() {
       if (data.queue.length > 0) {
         setSelectedTx(data.queue[0]);
       }
-      setLoading(false);
+      setError(null);
     } catch (err) {
       console.error(err);
-      setError("Cannot connect to Python server. Make sure FastAPI is running on port 8000.");
+      setError(err.message || "Cannot connect to server.");
+    } finally {
       setLoading(false);
     }
   };
 
-  // 2. FETCH COUNTRY NAME WHEN TRANSACTION IS SELECTED
+  // 2. HANDLE LOGIN SUBMISSION
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+
+    // Form data encoding for OAuth2 standard compatibility
+    const formData = new URLSearchParams();
+    formData.append('username', username);
+    formData.append('password', password);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Invalid username or password');
+      }
+
+      const data = await response.json();
+      localStorage.setItem('token', data.access_token);
+      setToken(data.access_token);
+    } catch (err) {
+      setLoginError(err.message);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken('');
+    setQueue([]);
+    setSelectedTx(null);
+  };
+
+  // 3. FETCH COUNTRY NAME
   useEffect(() => {
     if (selectedTx && selectedTx.location) {
       setCountry("Locating...");
-      // Split the location string "lat, lon" into two variables
       const [lat, lon] = selectedTx.location.split(',').map(coord => coord.trim());
 
       if (lat && lon) {
-        // Free client-side API to convert GPS to Country
         fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`)
           .then(res => res.json())
           .then(data => {
@@ -52,9 +102,9 @@ export default function App() {
           .catch(() => setCountry("Unknown Region"));
       }
     }
-  }, [selectedTx]); // This runs every time 'selectedTx' changes!
+  }, [selectedTx]);
 
-  // 3. HANDLE BUTTON CLICKS
+  // 4. HANDLE ACTION BUTTONS
   const handleDecision = async (id, decision) => {
     const updatedQueue = queue.filter(tx => tx.id !== id);
     setQueue(updatedQueue);
@@ -69,7 +119,10 @@ export default function App() {
     try {
       await fetch(`http://localhost:8000/api/resolve/${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Send JWT
+        },
         body: JSON.stringify({ decision })
       });
     } catch (err) {
@@ -77,52 +130,127 @@ export default function App() {
     }
   };
 
-  // LOADING STATE UI
-  if (loading) {
+  // RENDER LOGIN VIEW IF NOT AUTHENTICATED
+  if (!token) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-400">
-        <Loader2 className="w-12 h-12 animate-spin mb-4 text-blue-500" />
-        <h2 className="text-xl font-semibold text-slate-300">Connecting to Data Pipeline...</h2>
-      </div>
-    );
-  }
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-300 p-6">
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-8">
+          <div className="flex flex-col items-center mb-8">
+            <div className="bg-blue-500/10 p-4 rounded-full border border-blue-500/20 mb-3">
+              <ShieldAlert className="text-blue-500 w-8 h-8" />
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">System Access</h1>
+            <p className="text-sm text-slate-500 mt-1">Transaction Fraud Detection System</p>
+          </div>
 
-  // ERROR STATE UI
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <div className="bg-red-950/50 text-red-400 p-8 rounded-xl border border-red-900/50 max-w-lg text-center">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2 text-red-300">Connection Error</h2>
-          <p>{error}</p>
-          <button onClick={fetchData} className="mt-6 bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 transition">Try Again</button>
+          <form onSubmit={handleLogin} className="space-y-4">
+            {loginError && (
+              <div className="bg-red-950/40 border border-red-900/50 text-red-400 p-3 rounded-lg text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Username</label>
+              <div className="relative">
+                <User className="absolute left-3 top-3.5 w-5 h-5 text-slate-600" />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-11 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  placeholder="admin"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-slate-600" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-11 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3.5 rounded-xl mt-6 transition-all shadow-[0_0_20px_rgba(59,130,246,0.15)] active:scale-[0.98]"
+            >
+              Authenticate
+            </button>
+          </form>
         </div>
       </div>
     );
   }
 
-  // MAIN DASHBOARD UI
+  // RENDER LOADING SPINNER
+  if (loading && queue.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-400">
+        <Loader2 className="w-12 h-12 animate-spin mb-4 text-blue-500" />
+        <h2 className="text-xl font-semibold text-slate-300">Retrieving Secure Logs...</h2>
+      </div>
+    );
+  }
+
+  // RENDER CONNECTION ERROR SCREEN
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="bg-red-950/50 text-red-400 p-8 rounded-xl border border-red-900/50 max-w-lg text-center">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2 text-red-300">Session Error</h2>
+          <p className="mb-4">{error}</p>
+          <div className="flex gap-4 justify-center">
+            <button onClick={fetchData} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-500 transition">Retry Connection</button>
+            <button onClick={handleLogout} className="bg-slate-800 text-slate-300 px-6 py-2 rounded-lg font-semibold hover:bg-slate-700 transition">Log Out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // RENDER MAIN DASHBOARD VIEW
   return (
     <div className="min-h-screen p-8 font-sans text-slate-300 bg-slate-950 selection:bg-blue-500/30">
 
       {/* Header */}
-      <header className="mb-8 flex items-center gap-3">
-        <ShieldAlert className="text-blue-500 w-8 h-8" />
-        <h1 className="text-3xl font-bold text-white tracking-tight">Transaction Fraud Detection System</h1>
+      <header className="mb-8 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <ShieldAlert className="text-blue-500 w-8 h-8" />
+          <h1 className="text-3xl font-bold text-white tracking-tight">Transaction Fraud Detection System</h1>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 px-4 py-2 rounded-lg text-sm font-semibold transition"
+        >
+          Sign Out
+        </button>
       </header>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-5 gap-4 mb-8">
         {[
           { label: "Total Processed", value: kpis.total_processed.toLocaleString(), icon: Database, color: "text-blue-500" },
-          { label: "Automation Rate", value: kpis.automation_rate, icon: Activity, color: "text-emerald-500" },
-          { label: "System 2 Auto-Denied", value: kpis.auto_denied.toLocaleString(), icon: ShieldAlert, color: "text-red-500" },
+          { label: "Automation Rate", value: kpis.automation_rate, icon: Activity, color: "text-blue-400" },
+          { label: "System 2 Approved", value: kpis.auto_approved?.toLocaleString() || "0", icon: ShieldCheck, color: "text-emerald-500" },
+          { label: "System 2 Denied", value: kpis.auto_denied?.toLocaleString() || "0", icon: ShieldAlert, color: "text-red-500" },
           { label: "Pending HITL Review", value: queue.length, icon: Users, color: "text-orange-500" }
         ].map((kpi, idx) => (
-          <div key={idx} className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-xl flex items-center justify-between">
+          <div key={idx} className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-xl flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">{kpi.label}</p>
-              <p className="text-3xl font-bold mt-1 text-white">{kpi.value}</p>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{kpi.label}</p>
+              <p className="text-2xl font-bold mt-1 text-white">{kpi.value}</p>
             </div>
             <kpi.icon className={`w-8 h-8 ${kpi.color} opacity-80`} />
           </div>

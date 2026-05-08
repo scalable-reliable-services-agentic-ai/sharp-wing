@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     kafka_anomaly_detected_transactions_topic: str
     kafka_human_review_required_topic: str
     kafka_final_transactions_topic: str
+    kafka_human_resolved_topic: str
 
     # Redis Configuration
     redis_host: str
@@ -65,6 +66,11 @@ class Settings(BaseSettings):
     litellm_api_key: str
     litellm_gemini_model: str
     litellm_mistral_model: str
+
+    # Dashboard Security
+    jwt_secret_key: str
+    dashboard_admin_user: str
+    dashboard_admin_password: str
 
     @property
     def database_url(self) -> str:
