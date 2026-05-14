@@ -55,6 +55,7 @@ async def get_user_history(sender_id: int, limit: int = 5) -> str:
 
             return json.dumps(history, default=str)
     except Exception as e:
+        logger.error(f"Error fetching history: {e}", exc_info=True)
         return json.dumps({"error": f"Error fetching history: {str(e)}"})
     finally:
         await engine.dispose()
@@ -109,6 +110,7 @@ async def evaluate_impossible_travel(
                 }
             )
     except Exception as e:
+        logger.error(f"Error calculating travel: {e}", exc_info=True)
         return json.dumps({"error": f"Error calculating travel: {str(e)}"})
     finally:
         await engine.dispose()
@@ -148,6 +150,7 @@ async def evaluate_daily_velocity(sender_id: int, current_timestamp_ms: int) -> 
                 "total_volume": float(row.total_volume)
             })
     except Exception as e:
+        logger.error(f"Error calculating velocity: {e}", exc_info=True)
         return json.dumps({"error": f"Error calculating velocity: {str(e)}"})
     finally:
         await engine.dispose()

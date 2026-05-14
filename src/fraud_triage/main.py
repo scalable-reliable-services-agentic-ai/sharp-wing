@@ -118,7 +118,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             AUTO_PROCESSED_CNT.inc()
 
     except Exception as e:
-        logger.error(f"Error during LLM triage: {e}")
+        logger.error(f"Error during LLM triage: {e}", exc_info=True)
 
 
 async def main():
@@ -173,7 +173,7 @@ async def main():
                     )
 
     except Exception as e:
-        logger.error(f"Fatal error in main loop: {e}")
+        logger.error(f"Fatal error in main loop: {e}", exc_info=True)
     finally:
         await consumer.stop()
         await producer.stop()
