@@ -49,6 +49,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         f"System 1 Reasons: {transaction_data.get('system_1_reasons', 'Unknown')}"
     )
 
+    raw_content = ""
     try:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -65,6 +66,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                 messages=messages,
                 tools=openai_tools,
                 temperature=0.0,
+                # response_format={"type": "json_object"},  # maybe its worth to add also
             )
 
             response_message = response.choices[0].message
@@ -104,7 +106,15 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             }
         else:
             # Final Parse if it finished naturally
-            llm_output = json.loads(response_message.content)
+            raw_content = response_message.content or ""
+            clean_content = raw_content.strip()
+
+            if clean_content.startswith("```"):
+                lines = clean_content.splitlines()
+                if len(lines) > 2:
+                    clean_content = "\n".join(lines[1:-1]).strip()
+                    
+            llm_output = json.loads(clean_content)
 
         logger.info(f"Final Agent Decision: {llm_output}")
         transaction_data["agentic_evaluation"] = llm_output
@@ -116,6 +126,16 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         else:
             await producer.send_and_wait(OUT_FINAL_TOPIC, transaction_data)
             AUTO_PROCESSED_CNT.inc()
+
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse LLM output: {clean_content}. Error: {e}", exc_info=True)
+        llm_output = {
+            "requires_human_review": True,
+            "reasoning": f"System forced human review due to unparsable LLM output: {raw_content[:100]}..."
+        }
+        transaction_data["agentic_evaluation"] = llm_output
+        await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
+        HUMAN_REVIEW_CNT.inc()
 
     except Exception as e:
         logger.error(f"Error during LLM triage: {e}", exc_info=True)
