@@ -25,8 +25,8 @@ TOPICS = [
 ]
 
 # --- Metrics Definition ---
-INSERTED_TRANSACTIONS_CNT = Counter(
-    "inserted_transactions",
+APP_TRANSACTIONS_CNT_INSERTED_DB = Counter(
+    "app_tfd_inserted_transactions",
     "Number of transactions inserted/ingested into the database",
 )
 
@@ -40,7 +40,8 @@ async def get_db_engine():
                 return engine
         except Exception as e:
             logger.error(
-                f"Could not connect to database: {e}. Retrying in 5 seconds..."
+                f"Could not connect to database: {e}. Retrying in 5 seconds...",
+                exc_info=True
             )
             await asyncio.sleep(5)
 
@@ -125,7 +126,7 @@ async def main():
 
                         buffer.append(tx_data)
 
-                INSERTED_TRANSACTIONS_CNT.inc(len(result))
+                APP_TRANSACTIONS_CNT_INSERTED_DB.inc(len(result))
                 time_since_last_flush = time.time() - last_flush_time
                 if len(buffer) >= BATCH_SIZE or (
                     time_since_last_flush > BATCH_INTERVAL and buffer

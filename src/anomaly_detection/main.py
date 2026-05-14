@@ -9,12 +9,18 @@ from datetime import datetime
 
 logger = configure_logging(__name__)
 
-
-FRAUD_TRANSACTIONS_CNT = Counter(
-    "anomalous_transactions", "Number of transactions flagged as anomalous by rules"
+# ADC -- Anomaly Detection (classic methods, non-ML) 
+APP_TRANSACTIONS_CNT_FRAUD_ADC_OUT = Counter(
+    "app_tfd_anomalous_transactions",
+    "Number of transactions flagged as anomalous by rules"
 )
-CLEAN_TRANSACTIONS_CNT = Counter(
-    "safe_transactions", "Number of transactions that passed all rules"
+APP_TRANSACTIONS_CNT_CLEAN_ADC_OUT = Counter(
+    "app_tfd_safe_transactions",
+    "Number of transactions that passed all rules"
+)
+APP_TRANSACTIONS_CNT_TOTAL_ADC_IN = Counter(
+    "app_tfd_total_transactions_on_anomaly_detection_input",
+    "Number of transactions received by simple non-ML anomaly detection service"
 )
 
 
@@ -58,6 +64,7 @@ async def _check_velocity_rule(
     reasons: list[str], client_id: str, redis_client: aioredis.Redis
 ) -> bool:
     if client_id:
+        is_anomaly = False
         redis_key = f"velocity:{client_id}"
         current_count = await redis_client.incr(redis_key)
         if current_count == 1:
@@ -106,6 +113,8 @@ async def process_message(
     transaction = message.value
     tx_id = transaction.get("transaction_id", "UNKNOWN")
 
+    APP_TRANSACTIONS_CNT_TOTAL_ADC_IN.inc()
+
     try:
         # 1. Check the fast rules
         is_anomaly, reasons = await check_rules(transaction, redis_client)
@@ -115,15 +124,15 @@ async def process_message(
             logger.warning(f"Rule triggered [TX: {tx_id}] - {reasons}")
             transaction["system_1_reasons"] = reasons
             await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
-            FRAUD_TRANSACTIONS_CNT.inc()
+            APP_TRANSACTIONS_CNT_FRAUD_ADC_OUT.inc()
 
         else:
             logger.info(f"Safe [TX: {tx_id}]")
             await producer.send_and_wait(OUT_SAFE_TOPIC, transaction)
-            CLEAN_TRANSACTIONS_CNT.inc()
+            APP_TRANSACTIONS_CNT_CLEAN_ADC_OUT.inc()
 
     except Exception as e:
-        logger.error(f"Error processing transaction {tx_id}: {e}")
+        logger.error(f"Error processing transaction {tx_id}: {e}", exc_info=True)
 
 
 async def main():

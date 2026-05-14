@@ -4,23 +4,30 @@ import asyncio
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import redis.asyncio as aioredis
 from src.config import settings, configure_logging
-from prometheus_client import Counter
+from prometheus_client import Counter, Gauge
+from collections import deque
 from src.prometheus_metrics.metrics import start_metrics_server
 
 logger = configure_logging(__name__)
 
 
 # --- Metrics Definition ---
-VALID_TRANSACTIONS_CNT = Counter(
-    "valid_transactions", "Number of transactions that passed validation"
+APP_TRANSACTIONS_CNT_VALID_OUT = Counter(
+    "app_tfd_valid_transactions", "Number of transactions that passed validation"
 )
-INVALID_TRANSACTIONS_CNT = Counter(
-    "invalid_transactions", "Number of transactions that failed validation"
+APP_TRANSACTIONS_CNT_INVALID_OUT = Counter(
+    "app_tfd_invalid_transactions", "Number of transactions that failed validation"
 )
-TOTAL_VALIDATED_TRANSACTIONS_CNT = Counter(
-    "total_validated_transactions",
+APP_TRANSACTIONS_CNT_TOTAL_VALIDATED_IN = Counter(
+    "app_tfd_total_validated_transactions",
     "Total number of transactions that has been validated",
 )
+
+APP_TRANSACTIONS_AVERAGE_INCOMING_TPS = Gauge(
+    "app_tfd_average_transactions_per_second",
+    "Average number of incoming transactions per second",
+)
+recent_timestamps = deque()
 
 
 # Environment Variables
@@ -46,7 +53,7 @@ async def get_kafka_consumer():
             logger.info("AIOKafkaConsumer connected.")
             return consumer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka Consumer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka Consumer: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -61,7 +68,7 @@ async def get_kafka_producer():
             logger.info("AIOKafkaProducer connected.")
             return producer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka Producer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka Producer: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -73,7 +80,7 @@ async def get_redis_connection():
             logger.info("Async Redis connection established.")
             return r
         except Exception as e:
-            logger.error(f"Could not connect to Redis: {e}. Retrying...")
+            logger.error(f"Could not connect to Redis: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -95,6 +102,17 @@ def is_valid_check(amount: int | float) -> tuple[bool, str]:
     return isvalid, reason
 
 
+async def update_tps_gauge():
+    while True:
+        now = time.time()
+
+        while recent_timestamps and recent_timestamps[0] < now - 60:
+            recent_timestamps.popleft()
+            
+        APP_TRANSACTIONS_AVERAGE_INCOMING_TPS.set(len(recent_timestamps) / 60.0)
+        
+        await asyncio.sleep(1)
+
 # Core Logic
 async def process_message(message, producer, redis_client):
     try:
@@ -104,6 +122,9 @@ async def process_message(message, producer, redis_client):
         transaction["history"] = {}
         client_id = transaction["client_id"]
         amount = transaction["amount"]
+
+        recent_timestamps.append(time.time())
+        APP_TRANSACTIONS_CNT_TOTAL_VALIDATED_IN.inc()
 
         pipe = redis_client.pipeline()
         pipe.lpush(f"client:{client_id}:amounts", amount)
@@ -129,7 +150,7 @@ async def process_message(message, producer, redis_client):
             }
             await producer.send_and_wait(OUT_TOPIC_VALID, transaction)
             await redis_client.incr("total_validated_realtime")
-            VALID_TRANSACTIONS_CNT.inc()
+            APP_TRANSACTIONS_CNT_VALID_OUT.inc()
             logger.info(f"Validated transaction {transaction['transaction_id']}: OK")
 
         else:
@@ -147,18 +168,16 @@ async def process_message(message, producer, redis_client):
             pipe.ltrim("recent_invalid_transactions", 0, 99)
 
             await pipe.execute()
-            INVALID_TRANSACTIONS_CNT.inc()
+            APP_TRANSACTIONS_CNT_INVALID_OUT.inc()
 
             logger.warning(
                 f"Validated transaction {transaction['transaction_id']}: INVALID - {reason}"
             )
 
-        TOTAL_VALIDATED_TRANSACTIONS_CNT.inc()
-
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to decode message: {message.value}. Error: {e}")
+        logger.error(f"Failed to decode message: {message.value}. Error: {e}", exc_info=True)
     except Exception as e:
-        logger.error(f"An unexpected error occurred while processing message: {e}")
+        logger.error(f"An unexpected error occurred while processing message: {e}", exc_info=True)
 
 
 # Main Application Runner
@@ -169,7 +188,10 @@ async def main():
     redis_client = await get_redis_connection()
 
     logger.info(f"Validator starting. Consuming from topic: {IN_TOPIC}")
+    
     try:
+        asyncio.create_task(update_tps_gauge())
+
         async for message in consumer:
             # Create a non-blocking task to process each message
             asyncio.create_task(process_message(message, producer, redis_client))
