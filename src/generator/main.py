@@ -8,7 +8,7 @@ from src.generator.transaction import Transaction
 
 logger = configure_logging(__name__)
 
-# Environment & Constants
+# Environment and Constants
 KAFKA_BROKER = settings.kafka_broker
 KAFKA_TOPIC = settings.kafka_raw_transactions_topic
 
@@ -17,7 +17,6 @@ def fetch_existing_clients():
     """Fetches a pool of existing clients from PostgreSQL/TimescaleDB on startup"""
     try:
         logger.info("Connecting to Database to load existing clients...")
-        # Using getattr as a safety net in case settings doesn't have these exact names yet
         conn = psycopg2.connect(
             host=settings.db_host,
             port=getattr(settings, "postgres_port", 5432),
@@ -26,12 +25,12 @@ def fetch_existing_clients():
             password=getattr(settings, "postgres_password", "password"),
         )
         cursor = conn.cursor()
-        # Fetch up to 5000 distinct clients
+
         cursor.execute(
-            "SELECT DISTINCT client_id, client_type FROM transactions LIMIT 5000;"
+            "SELECT DISTINCT sender_id, client_type FROM transactions LIMIT 5000;"
         )
         clients = [
-            {"client_id": row[0], "client_type": row[1]} for row in cursor.fetchall()
+            {"sender_id": row[0], "client_type": row[1]} for row in cursor.fetchall()
         ]
         conn.close()
         logger.info(f"Successfully loaded {len(clients)} existing clients.")
@@ -113,7 +112,7 @@ async def main():
                 if existing_clients and random.random() < 0.8:
                     client = random.choice(existing_clients)
                     ctype = client["client_type"]
-                    cid = client["client_id"]
+                    cid = client["sender_id"]
                 else:
                     persona_types = [
                         "Standard",
@@ -145,7 +144,7 @@ async def main():
 
                 # Log success or fraud
                 if getattr(transaction, "is_fraud", False) or transaction_data.get(
-                    "is_fraud"
+                        "is_fraud"
                 ):
                     logger.warning(
                         f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}"

@@ -87,7 +87,7 @@ async def check_rules(
     is_anomaly = False
 
     amount = float(transaction.get("amount", 0.0))
-    client_id = transaction.get("client_id")
+    sender_id = transaction.get("sender_id")
     timestamp_str = transaction.get("timestamp_iso", "")
     location = transaction.get("location", "")
 
@@ -100,7 +100,7 @@ async def check_rules(
     is_anomaly_1, reasons = _check_smurfing_rule(reasons, amount)
     is_anomaly_2, reasons = _check_ato_rule(reasons, amount, tx_hour)
     is_anomaly_3, reasons = _check_location_rule(reasons, location)
-    is_anomaly_4, reasons = await _check_velocity_rule(reasons, client_id, redis_client)
+    is_anomaly_4, reasons = await _check_velocity_rule(reasons, sender_id, redis_client)
 
     is_anomaly = is_anomaly_1 or is_anomaly_2 or is_anomaly_3 or is_anomaly_4
 

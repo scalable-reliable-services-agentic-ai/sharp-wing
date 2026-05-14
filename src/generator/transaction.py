@@ -6,7 +6,7 @@ import random
 class Transaction:
     def __init__(self):
         self.transaction_id = self._create_transaction_id()
-        self.client_id = self._create_client_id()  # FIXED
+        self.sender_id = self._create_client_id()
         self.receiver_id = self._create_client_id()
         self.timestamp = datetime.now(timezone.utc)
         self.type, self.channel = self._create_pair_type_channel()
@@ -57,7 +57,7 @@ class Transaction:
         """Generates a dictionary for the Kafka message, compatible with downstream services."""
         return {
             "transaction_id": self.transaction_id,
-            "client_id": self.client_id,  # FIXED
+            "sender_id": self.sender_id,
             "amount": self.amount,
             "location": self.geolocation,
             "ip_address": self.ip_address,

@@ -9,6 +9,7 @@ import redis
 from src.config import settings
 from src.database.models import Transaction
 
+<<<<<<< HEAD
 from prometheus_client import Gauge
 from src.prometheus_metrics.metrics import start_metrics_server
 
@@ -19,6 +20,9 @@ AVERAGE_TPS = Gauge(
 
 
 # --- Environment & DB Setup ---
+=======
+# Environment and DB Setup
+>>>>>>> main
 DATABASE_URL = settings.database_url
 REDIS_HOST = settings.redis_host
 
@@ -26,11 +30,11 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-# --- Flask App ---
+# Flask App
 app = Flask(__name__)
 start_time_dt = datetime.now()
 
-# --- State for TPS Calculation ---
+# State for TPS Calculation
 transaction_times = deque()
 last_check_time = datetime.now()
 last_total_verified = 0
@@ -43,7 +47,7 @@ def get_redis_connection():
 def calculate_tps_from_last_minute(total_verified: int):
     global last_check_time, last_total_verified, transaction_times
 
-    # --- Calculate TPS over the last minute ---
+    # Calculate TPS over the last minute
     current_time = datetime.now()
     new_transactions = total_verified - last_total_verified
 

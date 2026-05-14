@@ -120,17 +120,19 @@ async def process_message(message, producer, redis_client):
 
         transaction["current_state"] = "received"
         transaction["history"] = {}
-        client_id = transaction["client_id"]
+
+        # Real-time Client Profile Update
+        sender_id = transaction["sender_id"]
         amount = transaction["amount"]
 
         recent_timestamps.append(time.time())
         APP_TRANSACTIONS_CNT_TOTAL_VALIDATED_IN.inc()
 
         pipe = redis_client.pipeline()
-        pipe.lpush(f"client:{client_id}:amounts", amount)
-        pipe.ltrim(f"client:{client_id}:amounts", 0, 4)
+        pipe.lpush(f"client:{sender_id}:amounts", amount)
+        pipe.ltrim(f"client:{sender_id}:amounts", 0, 4)
         pipe.hset(
-            f"client:{client_id}:profile",
+            f"client:{sender_id}:profile",
             mapping={
                 "last_location": transaction["location"],
                 "last_ip": transaction["ip_address"],
