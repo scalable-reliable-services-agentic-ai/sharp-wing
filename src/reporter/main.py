@@ -9,7 +9,6 @@ import redis
 from src.config import settings
 from src.database.models import Transaction
 
-<<<<<<< HEAD
 from prometheus_client import Gauge
 from src.prometheus_metrics.metrics import start_metrics_server
 
@@ -20,9 +19,6 @@ AVERAGE_TPS = Gauge(
 
 
 # --- Environment & DB Setup ---
-=======
-# Environment and DB Setup
->>>>>>> main
 DATABASE_URL = settings.database_url
 REDIS_HOST = settings.redis_host
 

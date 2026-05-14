@@ -60,7 +60,7 @@ async def setup_database(engine):
             )
             await connection.commit()
     except Exception as e:
-        logger.error(f"Error setting up hypertable: {e}")
+        logger.error(f"Error setting up hypertable: {e}", exc_info=True)
 
 
 async def get_kafka_consumer():
@@ -78,7 +78,7 @@ async def get_kafka_consumer():
             logger.info(f"Ingestor connected to End-State Topics: {TOPICS}")
             return consumer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -145,7 +145,7 @@ async def main():
                     last_flush_time = time.time()
 
             except Exception as e:
-                logger.error(f"An error occurred during the batch insert loop: {e}")
+                logger.error(f"An error occurred during the batch insert loop: {e}", exc_info=True)
                 buffer = []
     finally:
         await consumer.stop()
