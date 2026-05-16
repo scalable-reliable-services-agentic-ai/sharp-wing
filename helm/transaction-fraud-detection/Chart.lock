@@ -1,0 +1,39 @@
+dependencies:
+- name: anomaly-detection
+  repository: file://../anomaly-detection
+  version: 0.1.0
+- name: batch-ingestor
+  repository: file://../batch-ingestor
+  version: 0.1.0
+- name: fraud-triage
+  repository: file://../fraud-triage
+  version: 0.1.0
+- name: generator
+  repository: file://../generator
+  version: 0.1.0
+- name: grafana
+  repository: file://../grafana
+  version: 0.1.0
+- name: kafka
+  repository: file://../kafka
+  version: 0.1.0
+- name: prometheus
+  repository: file://../prometheus
+  version: 0.1.0
+- name: reporter
+  repository: file://../reporter
+  version: 0.1.0
+- name: seeder
+  repository: file://../seeder
+  version: 0.1.0
+- name: timescaledb
+  repository: file://../timescaledb
+  version: 0.1.0
+- name: redis
+  repository: file://../redis
+  version: 0.1.0
+- name: validator
+  repository: file://../validator
+  version: 0.1.0
+digest: sha256:88f2871e0596817a0871d16e3cf011f2f6cab83fe0890151a9edf75002a45926
+generated: "2026-05-16T00:21:40.378420227+02:00"

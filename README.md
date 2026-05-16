@@ -34,6 +34,49 @@ Then open:
 and
 `http://localhost:5003/`
 
+## Usage with Kubernetes
+
+### prequirements
+
+1. install helm:
+```bash
+```
+
+1. change permissions of the script and run it:
+```bash
+chmod +x ./docker/build_images.sh
+./docker/build_images.sh
+```
+
+this script must be run every time there are changes in the services code. After building the images it is required to run also this script:
+```bash
+kubectl rollout restart deployment <release-name>-validator
+```
+
+### running
+
+1. from main project directory
+```bash
+cd helm/transaction-fraud-detection
+helm dep up
+cd ../..
+```
+
+1. install
+```bash
+helm install transaction-release ./helm/transaction-fraud-detection
+```
+
+1. check:
+```bash
+kubectl get pods
+```
+
+1. creating secrets 
+```bash
+kubectl create secret generic timescaledb-secret --from-literal=password=passward
+```
+
 
 ## Observability
 
