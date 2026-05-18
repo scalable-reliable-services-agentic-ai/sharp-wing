@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seeder
+  labels:
+    app: seeder
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 10 
+  template:
+    metadata:
+      labels:
+        app: seeder
+    spec:
+      containers:
+        - name: seeder
+          image: "srs_seeder:latest"
+          imagePullPolicy: IfNotPresent # IfNotPresent | Never
+          
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets
+
+      restartPolicy: OnFailure

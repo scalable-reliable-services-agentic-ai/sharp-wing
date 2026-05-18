@@ -42,7 +42,28 @@ and
 ```bash
 ```
 
-1. change permissions of the script and run it:
+1. install kubectl:
+```bash
+```
+
+### building
+
+1. Starting Kubernetes in Docker Desktop App
+
+1. build images from compose.yaml (static images, without runtime info):
+```bash
+docker compose build
+```
+
+### development
+1. kubernetes verification:
+```bash
+kubectl cluster-info
+kubectl get nodes
+```
+
+
+<!-- 1. change permissions of the script and run it:
 ```bash
 chmod +x ./docker/build_images.sh
 ./docker/build_images.sh
@@ -77,6 +98,36 @@ kubectl get pods
 kubectl create secret generic timescaledb-secret --from-literal=password=passward
 ```
 
+
+## My order:
+
+```bash
+chmod +x ./docker/build_images.sh
+```
+
+```bash
+helm dep up ./helm/transaction-fraud-detection
+```
+
+```bash
+kubectl create secret generic timescaledb-secret --fromliteral=<pass-key>=<real-pass>
+```
+
+```bash
+helm install transaction-release ./helm/transaction-fraud-detection
+```
+
+### check:
+
+czy są na pewno obrazy
+```bash
+docker images
+```
+
+stan obrazów w k8s
+```bash
+kubectl get pods
+``` -->
 
 ## Observability
 

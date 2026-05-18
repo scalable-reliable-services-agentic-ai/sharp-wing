@@ -1,292 +1,341 @@
+# # Local images to use in Kubernetes (via Helm)
+
 services:
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - monitoring
-      - backend
-    volumes:
-      - ./config/prometheus:/etc/prometheus
-      - prometheus_data:/prometheus
-    command: --config.file=/etc/prometheus/prometheus.yml
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    networks:
-      - monitoring
-      - backend
-    # volumes:
-    #   - ./config/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
-    #   - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-      # prometheus:
-        # # condition: service_completed_successfully
-        # condition: service_healthy
-
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    ports:
-      - "9100:9100"
-    networks:
-      - monitoring
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
-    ports:
-      - "8080:8080"
-    networks:
-      - monitoring
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:rw
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-
-
-
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka
-    # ports:
-    #   - "9092:9092"
-    networks:
-      - backend
-    environment:
-      CLUSTER_ID: 'MkU1qYWLT4yv1aB-b3G9NA'
-      KAFKA_CLUSTER_ID: 'MkU1qYWLT4yv1aB-b3G9NA'
-      KAFKA_NODE_ID: 1
-
-      KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
-      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
-
-      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT_INTERNAL'
-
-      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
-
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:29092 --version || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    mem_limit: 2g
-
-  kafka-topics-creator:
-    image: confluentinc/cp-kafka:7.4.0
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    command: >
-      bash -c "
-        export KAFKA_OPTS=\"-Dlog4j.configuration=file:/dev/null\" &&
-        echo 'Waiting for Kafka to be ready...' &&
-        cub kafka-ready -b kafka:29092 1 30 &&
-        echo 'Kafka is ready!' &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_RAW_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_VALIDATED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_INVALID_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_NOANOMALY_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_ANOMALY_DETECTED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 &&
-        kafka-topics --create --if-not-exists --topic $$KAFKA_FINAL_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
-        echo 'Topics created!'
-      "
-
-  # Databases
-  timescaledb:
-    image: timescale/timescaledb:latest-pg14
-    container_name: timescaledb
-    env_file:
-      - common.env
-      - .env
-    ports:
-      - "5432:5432"
-    networks:
-      - backend
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:6.2-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-
-  # Application Services
   seeder:
+    image: srs_seeder:latest
     build:
       context: .
       dockerfile: docker/seeder.Dockerfile
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    restart: on-failure
 
   generator:
+    image: srs_generator:latest
     build:
       context: .
       dockerfile: docker/generator.Dockerfile
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      seeder:
-        condition: service_completed_successfully
 
   validator:
+    image: srs_validator:latest
     build:
       context: .
       dockerfile: docker/validator.Dockerfile
     deploy:
       replicas: 2
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      timescaledb:
-        condition: service_healthy
 
   batch-ingestor:
+    image: srs_batch_ingestor:latest
     build:
       context: .
       dockerfile: docker/batch_ingestor.Dockerfile
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      timescaledb:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'src.batch_ingestor.main' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   anomaly-detection:
+    image: srs_anomaly_detection:latest
     build:
       context: .
       dockerfile: docker/anomaly_detection.Dockerfile
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
 
   fraud-triage:
+    image: srs_fraud_triage:latest
     build:
       context: .
       dockerfile: docker/fraud_triage.Dockerfile
-    networks:
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      anomaly-detection:
-        condition: service_started
 
   reporter:
+    image: srs_reporter:latest
     build:
       context: .
       dockerfile: docker/reporter.Dockerfile
-    ports:
-      - "5005:5005"
-    networks:
-      - frontend
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
-volumes:
-  kafka_data:
-  postgres_data:
-  redis_data:
-  prometheus_data:
-  grafana_data:
 
-networks:
-  frontend:
-    driver: bridge
-  backend:
-    driver: bridge
-  monitoring:
-    driver: bridge
+# # OLD DOCKER COMPOSE CONFIGURATION
+# services:
+#   prometheus:
+#     image: prom/prometheus:latest
+#     container_name: prometheus
+#     ports:
+#       - "9090:9090"
+#     networks:
+#       - monitoring
+#       - backend
+#     volumes:
+#       - ./config/prometheus:/etc/prometheus
+#       - prometheus_data:/prometheus
+#     command: --config.file=/etc/prometheus/prometheus.yml
+
+#   grafana:
+#     image: grafana/grafana:latest
+#     container_name: grafana
+#     ports:
+#       - "3000:3000"
+#     networks:
+#       - monitoring
+#       - backend
+#     # volumes:
+#     #   - ./config/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+#     #   - grafana_data:/var/lib/grafana
+#     depends_on:
+#       - prometheus
+#       # prometheus:
+#         # # condition: service_completed_successfully
+#         # condition: service_healthy
+
+#   node-exporter:
+#     image: prom/node-exporter:latest
+#     container_name: node-exporter
+#     ports:
+#       - "9100:9100"
+#     networks:
+#       - monitoring
+
+#   cadvisor:
+#     image: gcr.io/cadvisor/cadvisor:latest
+#     container_name: cadvisor
+#     ports:
+#       - "8080:8080"
+#     networks:
+#       - monitoring
+#     volumes:
+#       - /:/rootfs:ro
+#       - /var/run:/var/run:rw
+#       - /sys:/sys:ro
+#       - /var/lib/docker/:/var/lib/docker:ro
+
+
+
+#   kafka:
+#     image: confluentinc/cp-kafka:7.4.0
+#     container_name: kafka
+#     # ports:
+#     #   - "9092:9092"
+#     networks:
+#       - backend
+#     environment:
+#       CLUSTER_ID: 'MkU1qYWLT4yv1aB-b3G9NA'
+#       KAFKA_CLUSTER_ID: 'MkU1qYWLT4yv1aB-b3G9NA'
+#       KAFKA_NODE_ID: 1
+
+#       KAFKA_PROCESS_ROLES: 'broker,controller'
+#       KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+#       KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+
+#       KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093'
+#       KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092'
+#       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT'
+#       KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT_INTERNAL'
+
+#       KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+
+#       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+#       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+#       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+#     volumes:
+#       - kafka_data:/var/lib/kafka/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:29092 --version || exit 1"]
+#       interval: 10s
+#       timeout: 10s
+#       retries: 5
+#     mem_limit: 2g
+
+#   kafka-topics-creator:
+#     image: confluentinc/cp-kafka:7.4.0
+#     depends_on:
+#       kafka:
+#         condition: service_healthy
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     command: >
+#       bash -c "
+#         export KAFKA_OPTS=\"-Dlog4j.configuration=file:/dev/null\" &&
+#         echo 'Waiting for Kafka to be ready...' &&
+#         cub kafka-ready -b kafka:29092 1 30 &&
+#         echo 'Kafka is ready!' &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_RAW_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_VALIDATED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_INVALID_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_NOANOMALY_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_ANOMALY_DETECTED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 &&
+#         kafka-topics --create --if-not-exists --topic $$KAFKA_FINAL_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+#         echo 'Topics created!'
+#       "
+
+#   # Databases
+#   timescaledb:
+#     image: timescale/timescaledb:latest-pg14
+#     container_name: timescaledb
+#     env_file:
+#       - common.env
+#       - .env
+#     ports:
+#       - "5432:5432"
+#     networks:
+#       - backend
+#     healthcheck:
+#       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+
+#   redis:
+#     image: redis:6.2-alpine
+#     container_name: redis
+#     ports:
+#       - "6379:6379"
+#     networks:
+#       - backend
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#     command: ["redis-server", "--appendonly", "yes"]
+#     volumes:
+#       - redis_data:/data
+
+#   # Application Services
+#   seeder:
+#     build:
+#       context: .
+#       dockerfile: docker/seeder.Dockerfile
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       timescaledb:
+#         condition: service_healthy
+#     restart: on-failure
+
+#   generator:
+#     build:
+#       context: .
+#       dockerfile: docker/generator.Dockerfile
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       kafka:
+#         condition: service_healthy
+#       kafka-topics-creator:
+#         condition: service_completed_successfully
+#       seeder:
+#         condition: service_completed_successfully
+
+#   validator:
+#     build:
+#       context: .
+#       dockerfile: docker/validator.Dockerfile
+#     deploy:
+#       replicas: 2
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       kafka:
+#         condition: service_healthy
+#       kafka-topics-creator:
+#         condition: service_completed_successfully
+#       redis:
+#         condition: service_healthy
+#       timescaledb:
+#         condition: service_healthy
+
+#   batch-ingestor:
+#     build:
+#       context: .
+#       dockerfile: docker/batch_ingestor.Dockerfile
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       kafka:
+#         condition: service_healthy
+#       kafka-topics-creator:
+#         condition: service_completed_successfully
+#       timescaledb:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD-SHELL", "pgrep -f 'src.batch_ingestor.main' || exit 1"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   anomaly-detection:
+#     build:
+#       context: .
+#       dockerfile: docker/anomaly_detection.Dockerfile
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       kafka:
+#         condition: service_healthy
+#       kafka-topics-creator:
+#         condition: service_completed_successfully
+#       redis:
+#         condition: service_healthy
+
+#   fraud-triage:
+#     build:
+#       context: .
+#       dockerfile: docker/fraud_triage.Dockerfile
+#     networks:
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       kafka:
+#         condition: service_healthy
+#       kafka-topics-creator:
+#         condition: service_completed_successfully
+#       anomaly-detection:
+#         condition: service_started
+
+#   reporter:
+#     build:
+#       context: .
+#       dockerfile: docker/reporter.Dockerfile
+#     ports:
+#       - "5005:5005"
+#     networks:
+#       - frontend
+#       - backend
+#     env_file:
+#       - common.env
+#       - .env
+#     depends_on:
+#       kafka-topics-creator:
+#         condition: service_completed_successfully
+#       timescaledb:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+
+# volumes:
+#   kafka_data:
+#   postgres_data:
+#   redis_data:
+#   prometheus_data:
+#   grafana_data:
+
+# networks:
+#   frontend:
+#     driver: bridge
+#   backend:
+#     driver: bridge
+#   monitoring:
+#     driver: bridge

@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporter
+  labels:
+    app: reporter
+spec:
+  selector:
+    matchLabels:
+      app: reporter
+  template:
+    metadata:
+      labels:
+        app: reporter
+    spec:
+      containers:
+        - name: reporter
+          image: "srs_reporter:latest"
+          imagePullPolicy: IfNotPresent # IfNotPresent | Never
+          
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets

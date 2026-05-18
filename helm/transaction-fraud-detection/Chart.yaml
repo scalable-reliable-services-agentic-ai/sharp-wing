@@ -1,7 +1,6 @@
 apiVersion: v2
 name: transaction-fraud-detection
-# description: A Helm chart for Kubernetes
-description: A Helm chart for Kubernetes for the transaction fraud detection system
+description: A Helm chart for Kubernetes
 
 # A chart can be either an 'application' or a 'library' chart.
 #
@@ -25,49 +24,26 @@ version: 0.1.0
 appVersion: "1.16.0"
 
 
-# apiVersion: v2
-# name: transaction-fraud-detection
-# description: A Helm chart for Kubernetes for the transaction fraud detection system
-# type: application
-# version: 0.1.0
-# appVersion: "1.0"
 dependencies:
-  - name: anomaly-detection
-    version: "0.1.0"
-    repository: "file://../anomaly-detection"
-  - name: batch-ingestor
-    version: "0.1.0"
-    repository: "file://../batch-ingestor"
-  - name: fraud-triage
-    version: "0.1.0"
-    repository: "file://../fraud-triage"
-  - name: generator
-    version: "0.1.0"
-    repository: "file://../generator"
-  - name: grafana
-    version: "0.1.0"
-    repository: "file://../grafana"
   - name: kafka
-    version: "0.1.0"
-    repository: "file://../kafka"
-  # - name: mcp-server
-  #   version: "0.1.0"
-  #   repository: "file://../mcp-server"
-  - name: prometheus
-    version: "0.1.0"
-    repository: "file://../prometheus"
-  - name: reporter
-    version: "0.1.0"
-    repository: "file://../reporter"
-  - name: seeder
-    version: "0.1.0"
-    repository: "file://../seeder"
-  - name: timescaledb
-    version: "0.1.0"
-    repository: "file://../timescaledb"
+    # version: "28.0.3"
+    version: "32.4.3"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
   - name: redis
-    version: "0.1.0"
-    repository: "file://../redis"
-  - name: validator
-    version: "0.1.0"
-    repository: "file://../validator"
+    # version: "19.0.1"
+    version: "25.5.3"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+  - name: timescaledb-single
+    version: "0.33.0"
+    repository: "https://charts.timescale.com"
+
+# dependencies:
+#   - name: kafka
+#     version: "*"
+#     repository: "oci://registry-1.docker.io/bitnamicharts"
+#   - name: redis
+#     version: "*"
+#     repository: "oci://registry-1.docker.io/bitnamicharts"
+#   - name: timescaledb-single
+#     version: "*"
+#     repository: "https://charts.timescale.com"
