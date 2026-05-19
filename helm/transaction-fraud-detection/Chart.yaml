@@ -26,16 +26,15 @@ appVersion: "1.16.0"
 
 dependencies:
   - name: kafka
-    # version: "28.0.3"
     version: "32.4.3"
     repository: "oci://registry-1.docker.io/bitnamicharts"
   - name: redis
-    # version: "19.0.1"
     version: "25.5.3"
     repository: "oci://registry-1.docker.io/bitnamicharts"
   - name: timescaledb-single
     version: "0.33.0"
     repository: "https://charts.timescale.com"
+    alias: "timescaledb"
 
 # dependencies:
 #   - name: kafka

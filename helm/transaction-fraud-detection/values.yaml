@@ -26,14 +26,12 @@ redis:
   master:
     persistence:
       enabled: true
-    # command: ["redis-server", "--appendonly", "yes"]
 
 
-timescaledb-single:
-  image:
-    # registry: docker.io
-    repository: timescale/timescaledb-ha
-    tag: "pg15.17-ts2.27.0"
+timescaledb:
+  # image:
+  #   repository: timescale/timescaledb-ha
+  #   tag: "pg15.17-ts2.27.0"
   fullnameOverride: "transaction-fraud-detection-timescaledb"
   secrets:
     credentials:
@@ -41,3 +39,10 @@ timescaledb-single:
   persistentVolumes:
     data:
       size: 5Gi
+  # patroni:
+  #   postgresql:
+  #     pg_hba:
+  #       - "hostssl all all 0.0.0.0/0 md5"
+  #       - "hostssl replication all 0.0.0.0/0 md5"
+  #       - "host all all 0.0.0.0/0 md5"
+  #       - "local all all trust"

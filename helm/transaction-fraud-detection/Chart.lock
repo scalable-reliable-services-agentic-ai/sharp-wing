@@ -8,5 +8,5 @@ dependencies:
 - name: timescaledb-single
   repository: https://charts.timescale.com
   version: 0.33.0
-digest: sha256:bdb98c219886c75fe0e12870b4ea9bb5763d4f8e5afe3835844c0b8567c36a94
-generated: "2026-05-18T22:12:29.696480235+02:00"
+digest: sha256:4ffa77756d32af5aa9e46514501a2373479681dc2cb83b9c12fb83b3790f1920
+generated: "2026-05-19T15:59:01.831425202+02:00"
