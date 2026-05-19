@@ -46,3 +46,16 @@ timescaledb:
         - "hostssl replication all 0.0.0.0/0 md5"
         - "host all all 0.0.0.0/0 md5"
         - "local all all trust"
+
+kube-prometheus-stack:
+  grafana:
+    adminPassword: "admin"
+    service:
+      type: NodePort
+      nodePort: 30300  # http://localhost:30300
+  prometheus:
+    prometheusSpec:
+      serviceMonitorSelectorNilUsesHelmValues: false
+    service:
+      type: NodePort
+      nodePort: 30090  # http://localhost:30090

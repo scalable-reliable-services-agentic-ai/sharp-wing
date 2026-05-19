@@ -35,14 +35,6 @@ dependencies:
     version: "0.33.0"
     repository: "https://charts.timescale.com"
     alias: "timescaledb"
-
-# dependencies:
-#   - name: kafka
-#     version: "*"
-#     repository: "oci://registry-1.docker.io/bitnamicharts"
-#   - name: redis
-#     version: "*"
-#     repository: "oci://registry-1.docker.io/bitnamicharts"
-#   - name: timescaledb-single
-#     version: "*"
-#     repository: "https://charts.timescale.com"
+  - name: kube-prometheus-stack
+    version: "85.1.3"
+    repository: "https://prometheus-community.github.io/helm-charts"

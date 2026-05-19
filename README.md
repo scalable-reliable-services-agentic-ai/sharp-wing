@@ -55,6 +55,18 @@ and
 docker compose build
 ```
 
+### when adding new dependendcies (updating chart.yaml)
+
+1. repo update
+    ```bash
+    helm repo update
+    ```
+
+1. dependency update
+    ```bash
+    helm dependency update ./helm/transaction-fraud-detection/
+    ```
+
 ### development
 1. kubernetes verification:
     ```bash
