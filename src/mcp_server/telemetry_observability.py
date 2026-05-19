@@ -65,7 +65,7 @@ async def get_user_history(sender_id: int, limit: int = 5) -> str:
 @mcp.tool()
 async def evaluate_impossible_travel(
     sender_id: int, current_location: str, current_timestamp_ms: int
-    ) -> str:
+) -> str:
     """
     Evaluates if the user's current transaction location conflicts geographically
     with their last known location in the database
@@ -85,10 +85,7 @@ async def evaluate_impossible_travel(
                          """)
             result = await conn.execute(
                 query,
-                {
-                    "sender_id": sender_id,
-                    "current_timestamp_ms": current_timestamp_ms
-                }
+                {"sender_id": sender_id, "current_timestamp_ms": current_timestamp_ms},
             )
             row = result.fetchone()
 
@@ -136,19 +133,24 @@ async def evaluate_daily_velocity(sender_id: int, current_timestamp_ms: int) -> 
                            AND timestamp_ms >= :twenty_four_hours_ago
                            AND timestamp_ms <= :current_timestamp_ms
                          """)
-            result = await conn.execute(query, {
-                "sender_id": sender_id,
-                "twenty_four_hours_ago": twenty_four_hours_ago,
-                "current_timestamp_ms": current_timestamp_ms,
-            })
+            result = await conn.execute(
+                query,
+                {
+                    "sender_id": sender_id,
+                    "twenty_four_hours_ago": twenty_four_hours_ago,
+                    "current_timestamp_ms": current_timestamp_ms,
+                },
+            )
             row = result.fetchone()
 
-            return json.dumps({
-                "sender_id": sender_id,
-                "time_window_hours": 24,
-                "transaction_count": row.transaction_count,
-                "total_volume": float(row.total_volume)
-            })
+            return json.dumps(
+                {
+                    "sender_id": sender_id,
+                    "time_window_hours": 24,
+                    "transaction_count": row.transaction_count,
+                    "total_volume": float(row.total_volume),
+                }
+            )
     except Exception as e:
         logger.error(f"Error calculating velocity: {e}", exc_info=True)
         return json.dumps({"error": f"Error calculating velocity: {str(e)}"})

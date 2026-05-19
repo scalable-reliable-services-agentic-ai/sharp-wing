@@ -9,18 +9,17 @@ from datetime import datetime
 
 logger = configure_logging(__name__)
 
-# ADC -- Anomaly Detection (classic methods, non-ML) 
+# ADC -- Anomaly Detection (classic methods, non-ML)
 APP_TRANSACTIONS_CNT_FRAUD_ADC_OUT = Counter(
     "app_tfd_anomalous_transactions",
-    "Number of transactions flagged as anomalous by rules"
+    "Number of transactions flagged as anomalous by rules",
 )
 APP_TRANSACTIONS_CNT_CLEAN_ADC_OUT = Counter(
-    "app_tfd_safe_transactions",
-    "Number of transactions that passed all rules"
+    "app_tfd_safe_transactions", "Number of transactions that passed all rules"
 )
 APP_TRANSACTIONS_CNT_TOTAL_ADC_IN = Counter(
     "app_tfd_total_transactions_on_anomaly_detection_input",
-    "Number of transactions received by simple non-ML anomaly detection service"
+    "Number of transactions received by simple non-ML anomaly detection service",
 )
 
 

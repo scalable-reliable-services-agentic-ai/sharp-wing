@@ -53,7 +53,9 @@ async def get_kafka_consumer():
             logger.info("AIOKafkaConsumer connected.")
             return consumer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka Consumer: {e}. Retrying...", exc_info=True)
+            logger.error(
+                f"Could not connect to Kafka Consumer: {e}. Retrying...", exc_info=True
+            )
             await asyncio.sleep(5)
 
 
@@ -68,7 +70,9 @@ async def get_kafka_producer():
             logger.info("AIOKafkaProducer connected.")
             return producer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka Producer: {e}. Retrying...", exc_info=True)
+            logger.error(
+                f"Could not connect to Kafka Producer: {e}. Retrying...", exc_info=True
+            )
             await asyncio.sleep(5)
 
 
@@ -108,10 +112,11 @@ async def update_tps_gauge():
 
         while recent_timestamps and recent_timestamps[0] < now - 60:
             recent_timestamps.popleft()
-            
+
         APP_TRANSACTIONS_AVERAGE_INCOMING_TPS.set(len(recent_timestamps) / 60.0)
-        
+
         await asyncio.sleep(1)
+
 
 # Core Logic
 async def process_message(message, producer, redis_client):
@@ -177,9 +182,13 @@ async def process_message(message, producer, redis_client):
             )
 
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to decode message: {message.value}. Error: {e}", exc_info=True)
+        logger.error(
+            f"Failed to decode message: {message.value}. Error: {e}", exc_info=True
+        )
     except Exception as e:
-        logger.error(f"An unexpected error occurred while processing message: {e}", exc_info=True)
+        logger.error(
+            f"An unexpected error occurred while processing message: {e}", exc_info=True
+        )
 
 
 # Main Application Runner
@@ -190,7 +199,7 @@ async def main():
     redis_client = await get_redis_connection()
 
     logger.info(f"Validator starting. Consuming from topic: {IN_TOPIC}")
-    
+
     try:
         asyncio.create_task(update_tps_gauge())
 

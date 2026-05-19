@@ -144,7 +144,7 @@ async def main():
 
                 # Log success or fraud
                 if getattr(transaction, "is_fraud", False) or transaction_data.get(
-                        "is_fraud"
+                    "is_fraud"
                 ):
                     logger.warning(
                         f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}"

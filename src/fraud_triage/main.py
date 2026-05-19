@@ -113,7 +113,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                 lines = clean_content.splitlines()
                 if len(lines) > 2:
                     clean_content = "\n".join(lines[1:-1]).strip()
-                    
+
             llm_output = json.loads(clean_content)
 
         logger.info(f"Final Agent Decision: {llm_output}")
@@ -128,10 +128,12 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             AUTO_PROCESSED_CNT.inc()
 
     except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse LLM output: {clean_content}. Error: {e}", exc_info=True)
+        logger.warning(
+            f"Failed to parse LLM output: {clean_content}. Error: {e}", exc_info=True
+        )
         llm_output = {
             "requires_human_review": True,
-            "reasoning": f"System forced human review due to unparsable LLM output: {raw_content[:100]}..."
+            "reasoning": f"System forced human review due to unparsable LLM output: {raw_content[:100]}...",
         }
         transaction_data["agentic_evaluation"] = llm_output
         await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
@@ -164,7 +166,7 @@ async def main():
         # command="python", args=["-m", "src.mcp_server.server"], env={**os.environ}
         command="python",
         args=["-m", "src.mcp_server.telemetry_observability"],
-        env={**os.environ}
+        env={**os.environ},
     )
     llm_client = AsyncOpenAI(api_key=MODEL_KEY, base_url=MODEL_PROXY)
 

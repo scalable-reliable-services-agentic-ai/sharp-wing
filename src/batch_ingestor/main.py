@@ -42,7 +42,7 @@ async def get_db_engine():
         except Exception as e:
             logger.error(
                 f"Could not connect to database: {e}. Retrying in 5 seconds...",
-                exc_info=True
+                exc_info=True,
             )
             await asyncio.sleep(5)
 
@@ -78,7 +78,9 @@ async def get_kafka_consumer():
             logger.info(f"Ingestor connected to End-State Topics: {TOPICS}")
             return consumer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...", exc_info=True)
+            logger.error(
+                f"Could not connect to Kafka consumer: {e}. Retrying...", exc_info=True
+            )
             await asyncio.sleep(5)
 
 
@@ -145,7 +147,10 @@ async def main():
                     last_flush_time = time.time()
 
             except Exception as e:
-                logger.error(f"An error occurred during the batch insert loop: {e}", exc_info=True)
+                logger.error(
+                    f"An error occurred during the batch insert loop: {e}",
+                    exc_info=True,
+                )
                 buffer = []
     finally:
         await consumer.stop()
@@ -155,4 +160,3 @@ async def main():
 if __name__ == "__main__":
     start_metrics_server(8004)
     asyncio.run(main())
-
