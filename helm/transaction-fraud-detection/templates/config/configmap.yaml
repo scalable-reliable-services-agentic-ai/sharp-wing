@@ -10,7 +10,7 @@ data:
   REDIS_PORT: "6379"
 
   # POSTGRES_HOST: "transaction-fraud-detection-timescaledb-single"
-  DB_HOST: "transaction-fraud-detection-timescaledb-single"
+  DB_HOST: "transaction-fraud-detection-timescaledb"
   POSTGRES_DB: "transactions"
   POSTGRES_PORT: "5432"
   POSTGRES_USER: "postgres"

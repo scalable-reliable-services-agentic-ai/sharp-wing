@@ -18,27 +18,26 @@ kafka:
     transactionStateLogReplicationFactor: 1
     transactionStateLogMinIsr: 1
 
+
 redis:
-  image:
-    registry: docker.io
-    repository: bitnami/redis
-    # tag: "latest"
-    tag: "8.6.3"
   architecture: standalone
   auth:
     enabled: false
   master:
-    command: ["redis-server", "--appendonly", "yes"]
+    persistence:
+      enabled: true
+    # command: ["redis-server", "--appendonly", "yes"]
+
 
 timescaledb-single:
   image:
     # registry: docker.io
-    repository: timescale/timescaledb-ha  # timescale/timescaledb
-    tag: "pg15.17-ts2.27.0"  # tag: "latest-pg15"  # tag: "2.27.0-pg15"
+    repository: timescale/timescaledb-ha
+    tag: "pg15.17-ts2.27.0"
   fullnameOverride: "transaction-fraud-detection-timescaledb"
   secrets:
     credentials:
-      PATRONI_SUPERUSER_PASSWORD: "password" # to-be-set
+      PATRONI_SUPERUSER_PASSWORD: "password"
   persistentVolumes:
     data:
       size: 5Gi
