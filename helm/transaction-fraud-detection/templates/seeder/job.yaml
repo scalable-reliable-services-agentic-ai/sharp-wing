@@ -31,7 +31,6 @@ spec:
         - name: seeder
           image: "srs_seeder:latest"
           imagePullPolicy: Always  # IfNotPresent IfNotPresent | Never
-
           envFrom:
             - configMapRef:
                 name: srs-environment-config

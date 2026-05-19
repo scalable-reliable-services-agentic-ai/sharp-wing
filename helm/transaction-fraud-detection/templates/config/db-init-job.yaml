@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-db-init
+  # annotations:
+  #   # Ten hook sprawi, że Helm uruchomi ten Job zaraz po postawieniu bazy,
+  #   # ale ZANIM uruchomi Twoje aplikacje (seeder, ingestor, itd.)
+  #   "helm.sh/hook": post-install,post-upgrade
+  #   "helm.sh/hook-weight": "-5"
+  #   "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      containers:
+        - name: db-init
+          image: postgres:15-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              # Czekamy, aż baza będzie dostępna (odpowiednik healthchecka z Compose)
+              until pg_isready -h $DB_HOST -U $POSTGRES_USER; do
+                sleep 2
+              done
+              
+              echo "Creating database transactions if it doesn't exist..."
+              # Łączymy się z domyślną bazą 'postgres' i tworzymy 'transactions'
+              # Omijamy błąd, jeśli baza już istnieje
+              psql -h $DB_HOST -U $POSTGRES_USER -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'transactions'" | grep -q 1 || psql -h $DB_HOST -U $POSTGRES_USER -d postgres -c "CREATE DATABASE transactions;"
+              
+          env:
+            # Get database connection details from ConfigMap and Secret
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: srs-environment-config
+                  key: DB_HOST
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: srs-environment-config
+                  key: POSTGRES_USER
+            # Get password from Secret for security
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: srs-app-secrets
+                  key: POSTGRES_PASSWORD
+      restartPolicy: Never
+  backoffLimit: 5

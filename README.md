@@ -57,9 +57,44 @@ docker compose build
 
 ### development
 1. kubernetes verification:
+    ```bash
+    kubectl cluster-info
+    ```
+    ```bash
+    kubectl get nodes
+    ```
+
+1. helm repo:
+    ```bash
+    helm repo update
+    ```
+
+1. helm dependency update:
+    ```bash
+    helm dependency update ./helm/transaction-fraud-detection/
+    ```
+
+1. helm install:
+    ```bash
+    helm install transaction-fraud-detection ./helm/transaction-fraud-detection
+    ```
+
+### monitoring app
+
 ```bash
-kubectl cluster-info
-kubectl get nodes
+kubectl get pods
+```
+
+```bash
+kubectl get pods -w
+```
+
+```bash
+kubectl logs -f job/<job-name_or_id>
+```
+
+```bash
+kubectl logs -f <service-name_or_id>
 ```
 
 
