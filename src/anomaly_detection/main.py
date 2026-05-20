@@ -13,45 +13,82 @@ OUT_SAFE_TOPIC = settings.kafka_noanomaly_transactions_topic
 OUT_ANOMALY_TOPIC = settings.kafka_anomaly_detected_transactions_topic
 
 
+def is_safe_location(lat: float, lon: float) -> bool:
+    """Checks if coordinates fall within expected baseline regions (Italy/US)"""
+    # IT Bounding Box (approx 36 to 47 Lat, 6 to 18.5 Lon)
+    if (36.0 <= lat <= 48.0) and (6.0 <= lon <= 19.0):
+        return True
+    # US Bounding Box (approx 25 to 49 Lat, -125 to -66 Lon)
+    if (24.0 <= lat <= 50.0) and (-126.0 <= lon <= -65.0):
+        return True
+    return False
+
+
 async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[bool, list[str]]:
     """Evaluates deterministic rules tailored to the seeder personas"""
     reasons = []
     is_anomaly = False
 
-    amount = float(transaction.get("amount", 0.0))
+    amount_raw = float(transaction.get("amount", 0.0))
+    currency = transaction.get("currency", "USD").upper()  # Fallback to USD if missing
     sender_id = transaction.get("sender_id")
     timestamp_str = transaction.get("timestamp_iso", "")
     location = transaction.get("location", "")
 
+    # --- CURRENCY NORMALIZATION ---
+    # Fast, hardcoded rates for System 1 triage (in a real app, you'd fetch these from Redis/API)
+    exchange_rates = {
+        "USD": 1.0,
+        "EUR": 1.08,
+        "GBP": 1.25,
+        "JPY": 0.0065,
+        "CAD": 0.73,
+        "AUD": 0.65
+    }
+
+    # Calculate the USD equivalent for our tripwire logic
+    rate = exchange_rates.get(currency, 1.0)
+    amount_usd = amount_raw * rate
+
     # Extract the hour from the timestamp for behavioral checks
     try:
-        tx_hour = datetime.fromisoformat(timestamp_str).hour
-    except ValueError:
-        tx_hour = 12 # Default fallback
+        clean_ts = timestamp_str.replace("Z", "+00:00")
+        tx_hour = datetime.fromisoformat(clean_ts).hour
+    except (ValueError, AttributeError):
+        tx_hour = 12  # Default fallback
 
-    # RULE 1: Smurfing Check (Catches Fraud_Smurfing)
-    if 9900 <= amount <= 9999:
+    # RULE 1: Smurfing Check (Use amount_usd!)
+    if 9900 <= amount_usd <= 9999:
         is_anomaly = True
-        reasons.append(f"Smurfing Check: Amount ${amount} is designed to evade 10k reporting.")
+        reasons.append(
+            f"Smurfing Check: Amount ({amount_raw} {currency} = ${amount_usd:.2f} USD) is designed to evade 10k reporting.")
 
-    # RULE 2: Time-Based Massive Drain (Catches Fraud_ATO)
-    # VIPs/Corporate do large amounts, but NOT at 3 AM
-    if amount >= 20000 and (tx_hour <= 4 or tx_hour >= 23):
+    # RULE 2: Time-Based Massive Drain (Use amount_usd!)
+    if amount_usd >= 20000 and (tx_hour <= 4 or tx_hour >= 23):
         is_anomaly = True
-        reasons.append(f"ATO Check: Massive transfer (${amount}) initiated at suspicious hour ({tx_hour}:00).")
+        reasons.append(
+            f"ATO Check: Massive transfer ({amount_raw} {currency} = ${amount_usd:.2f} USD) initiated at suspicious hour ({tx_hour}:00).")
 
     # RULE 3: Geolocation Tripwire (Catches StolenCard & ImpossibleTravel)
-    # If it's not a standard IT/US coordinate, flag it for LLM review
-    if "SE_ASIA" in location or "GLOBAL" in location:
-         is_anomaly = True
-         reasons.append(f"Location Tripwire: Transaction from high-risk or unexpected region ({location}). Needs LLM review.")
+    try:
+        if location and "," in location:
+            lat_str, lon_str = location.split(",")
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            if not is_safe_location(lat, lon):
+                is_anomaly = True
+                reasons.append(
+                    f"Location Tripwire: Coordinates ({lat}, {lon}) fall outside standard safe operating regions (IT/US).")
+    except Exception as e:
+        logger.warning(f"Failed to parse location '{location}': {e}")
 
     # RULE 4: Standard Velocity Check
     if sender_id:
         redis_key = f"velocity:{sender_id}"
         current_count = await redis_client.incr(redis_key)
         if current_count == 1:
-            await redis_client.expire(redis_key, 60) # 60 seconds window
+            await redis_client.expire(redis_key, 60)  # 60 seconds window
 
         if current_count > 4:
             is_anomaly = True

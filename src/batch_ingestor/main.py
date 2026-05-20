@@ -96,19 +96,22 @@ async def main():
                         else:
                             tx_data["current_state"] = "CLEARED_SYSTEM_1"
 
-                        # Extract the reasoning dictionaries
+                        # Extract the reasoning dictionaries (OUTDENTED so it always runs!)
                         ai_eval = tx_data.pop("agentic_evaluation", {})
                         sys1_reasons = tx_data.pop("system_1_reasons", [])
+                        obs_eval = tx_data.pop("observer_evaluation", {})
 
-                        # Safely ensure history is a dictionary (in case it's missing)
+                        # Safely ensure history is a dictionary
                         if "history" not in tx_data or not isinstance(tx_data["history"], dict):
                             tx_data["history"] = {}
 
-                        # ADD to the existing dictionary so we don't erase the validator's logs
+                        # ADD to the existing dictionary
                         if sys1_reasons:
                             tx_data["history"]["system_1"] = sys1_reasons
                         if ai_eval:
                             tx_data["history"]["system_2"] = ai_eval
+                        if obs_eval:
+                            tx_data["history"]["observer_evaluation"] = obs_eval
 
                         buffer.append(tx_data)
 
