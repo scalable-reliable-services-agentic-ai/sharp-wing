@@ -1,7 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: reporter-service
+  name: {{ .Release.Name }}-reporter
+  # name: reporter-service
+  labels:
+    app: reporter
 spec:
   type: LoadBalancer 
   selector:
@@ -10,3 +13,7 @@ spec:
     - protocol: TCP
       port: 5005        # Browser port (localhost:5005)
       targetPort: 5005  # Internal port in kubernetes
+    - name: metrics
+      protocol: TCP
+      port: 8005
+      targetPort: 8005

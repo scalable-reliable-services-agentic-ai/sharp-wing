@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-batch-ingestor-monitor
+  labels:
+    release: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app: batch-ingestor
+  endpoints:
+    - port: metrics
