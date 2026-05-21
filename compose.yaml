@@ -58,6 +58,7 @@ services:
         kafka-topics --create --if-not-exists --topic $$KAFKA_ANOMALY_DETECTED_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
         kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 1 &&
         kafka-topics --create --if-not-exists --topic $$KAFKA_FINAL_TRANSACTIONS_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 4 &&
+        kafka-topics --create --if-not-exists --topic $$KAFKA_HUMAN_RESOLVED_TOPIC --bootstrap-server kafka:29092 --replication-factor 1 --partitions 2 &&
         echo 'Topics created!'
       "
 
@@ -72,6 +73,8 @@ services:
       - "5432:5432"
     networks:
       - backend
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
@@ -178,6 +181,8 @@ services:
     env_file:
       - common.env
       - .env
+    volumes:
+      - ml_model_storage:/app/src/ml_service/models
     depends_on:
       kafka:
         condition: service_healthy
@@ -223,10 +228,47 @@ services:
       redis:
         condition: service_healthy
 
+  ml-retrain-worker:
+    build:
+      context: .
+      dockerfile: docker/anomaly_detection.Dockerfile
+    command: python -m src.ml_service.retrain_worker
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
+    volumes:
+      - ml_model_storage:/app/src/ml_service/models
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
+
+  chaos-monkey:
+    build:
+      context: .
+      dockerfile: docker/anomaly_detection.Dockerfile
+    command: python -m src.generator.chaos_monkey
+    networks:
+      - backend
+    env_file:
+      - common.env
+      - .env
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-topics-creator:
+        condition: service_completed_successfully
+    profiles:
+      - debug
+
 volumes:
   kafka_data:
   postgres_data:
   redis_data:
+  ml_model_storage:
 
 networks:
   frontend:
