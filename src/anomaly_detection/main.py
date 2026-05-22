@@ -77,18 +77,43 @@ async def _check_velocity_rule(
         return is_anomaly, reasons
     return False, reasons
 
+def is_safe_location(lat: float, lon: float) -> bool:
+    """Checks if coordinates fall within expected baseline regions (Italy/US)"""
+    # IT Bounding Box (approx 36 to 47 Lat, 6 to 18.5 Lon)
+    if (36.0 <= lat <= 48.0) and (6.0 <= lon <= 19.0):
+        return True
+    # US Bounding Box (approx 25 to 49 Lat, -125 to -66 Lon)
+    if (24.0 <= lat <= 50.0) and (-126.0 <= lon <= -65.0):
+        return True
+    return False
 
-async def check_rules(
-    transaction: dict, redis_client: aioredis.Redis
-) -> tuple[bool, list[str]]:
+
+async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[bool, list[str]]:
     """Evaluates deterministic rules tailored to the seeder personas"""
     reasons = []
     is_anomaly = False
 
-    amount = float(transaction.get("amount", 0.0))
+    amount_raw = float(transaction.get("amount", 0.0))
+    currency = transaction.get("currency", "USD").upper()  # Fallback to USD if missing
     sender_id = transaction.get("sender_id")
     timestamp_str = transaction.get("timestamp_iso", "")
     location = transaction.get("location", "")
+
+    # --- CURRENCY NORMALIZATION ---
+    # Fast, hardcoded rates for System 1 triage (in a real app, you'd fetch these from Redis/API)
+    exchange_rates = {
+        "USD": 1.0,
+        "EUR": 1.08,
+        "GBP": 1.25,
+        "JPY": 0.0065,
+        "CAD": 0.73,
+        "AUD": 0.65
+    }
+
+    # Calculate the USD equivalent for our tripwire logic
+    rate = exchange_rates.get(currency, 1.0)
+    amount_usd = amount_raw * rate
+    amount = amount_usd  # to delete later
 
     # Extract the hour from the timestamp for behavioral checks
     try:
@@ -102,6 +127,19 @@ async def check_rules(
     is_anomaly_4, reasons = await _check_velocity_rule(reasons, sender_id, redis_client)
 
     is_anomaly = is_anomaly_1 or is_anomaly_2 or is_anomaly_3 or is_anomaly_4
+
+    try:
+        if location and "," in location:
+            lat_str, lon_str = location.split(",")
+            lat = float(lat_str.strip())
+            lon = float(lon_str.strip())
+
+            if not is_safe_location(lat, lon):
+                is_anomaly = True
+                reasons.append(
+                    f"Location Tripwire: Coordinates ({lat}, {lon}) fall outside standard safe operating regions (IT/US).")
+    except Exception as e:
+        logger.warning(f"Failed to parse location '{location}': {e}")
 
     return is_anomaly, reasons
 

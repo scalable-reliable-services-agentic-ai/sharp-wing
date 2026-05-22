@@ -3,22 +3,27 @@ name = "transaction_fraud_detection_system"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "logging",
+    "fastapi",
+    "uvicorn",
     "flask",
     "flask-sse",
     "redis",
-    "pyyaml",
-    "jinja2",
-    "faker",
     "aiokafka",
     "asyncpg",
     "sqlalchemy",
     "psycopg2-binary",
+    "pyyaml",
+    "jinja2",
+    "faker",
     "pydantic-settings",
-    "black",
-    "ruff",
     "litellm",
     "openai",
     "fastmcp",
     "prometheus-client",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
+    "python-multipart",
+    "bcrypt<4.0.0",
+    "black",
+    "ruff"
 ]
