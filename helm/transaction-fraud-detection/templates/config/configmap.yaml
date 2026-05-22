@@ -22,6 +22,7 @@ data:
   KAFKA_ANOMALY_DETECTED_TRANSACTIONS_TOPIC: "anomaly-detected-transactions"
   KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC: "human-review-required"
   KAFKA_FINAL_TRANSACTIONS_TOPIC: "final-transactions"
+  KAFKA_HUMAN_RESOLVED_TOPIC: "fraud_human_resolved"
 
   BATCH_SIZE: "5000"
   BATCH_INTERVAL: "2"
@@ -35,3 +36,5 @@ data:
   LITELLM_PROXY_URL: https://litellm-proxy-1013932759942.europe-west8.run.app
   LITELLM_GEMINI_MODEL: gemini-2.5-pro
   LITELLM_MISTRAL_MODEL: vertex_ai/mistral-small-2503
+
+  DASHBOARD_ADMIN_USER: "admin_dev"
