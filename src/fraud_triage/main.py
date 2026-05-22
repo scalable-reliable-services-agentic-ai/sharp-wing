@@ -56,16 +56,16 @@ def parse_llm_json(raw_text: str) -> dict:
 
     # 1. Try to extract content inside markdown backticks if they exist
     # (Escaped to prevent chat UI markdown crashes)
-    match = re.search(r'\`\`\`(?:json)?\s*(.*?)\s*\`\`\`', clean_text, re.DOTALL)
+    match = re.search(r"\`\`\`(?:json)?\s*(.*?)\s*\`\`\`", clean_text, re.DOTALL)
     if match:
         clean_text = match.group(1)
 
     # 2. Find the first '{' and the last '}' to ignore any chatty preamble
-    start = clean_text.find('{')
-    end = clean_text.rfind('}')
+    start = clean_text.find("{")
+    end = clean_text.rfind("}")
 
     if start != -1 and end != -1:
-        clean_text = clean_text[start:end + 1]
+        clean_text = clean_text[start : end + 1]
 
     try:
         return json.loads(clean_text)
@@ -74,19 +74,23 @@ def parse_llm_json(raw_text: str) -> dict:
         raise e
 
 
-async def run_observer_evaluation(transaction_data, triage_analysis, tool_history, llm_client):
+async def run_observer_evaluation(
+    transaction_data, triage_analysis, tool_history, llm_client
+):
     """LLM-as-a-Judge: Evaluates the Triage Agent's reasoning"""
-    logger.info(f"Observer Agent evaluating triage logic for TX: {transaction_data.get('transaction_id')}")
+    logger.info(
+        f"Observer Agent evaluating triage logic for TX: {transaction_data.get('transaction_id')}"
+    )
 
     payload = {
         "transaction_data": transaction_data,
         "investigation_history": str(tool_history),
-        "triage_analysis": triage_analysis
+        "triage_analysis": triage_analysis,
     }
 
     messages = [
         {"role": "system", "content": OBSERVER_PROMPT},
-        {"role": "user", "content": json.dumps(payload)}
+        {"role": "user", "content": json.dumps(payload)},
     ]
 
     try:
@@ -94,17 +98,23 @@ async def run_observer_evaluation(transaction_data, triage_analysis, tool_histor
             model=MODEL_NAME,
             messages=messages,
             temperature=0.0,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
         )
 
         # Use our bulletproof parser
         observer_output = parse_llm_json(response.choices[0].message.content)
 
-        logger.info(f"Observer Grade: {observer_output.get('reasoning_grade')}/5 - {observer_output.get('critique')}")
+        logger.info(
+            f"Observer Grade: {observer_output.get('reasoning_grade')}/5 - {observer_output.get('critique')}"
+        )
         return observer_output
     except Exception as e:
         logger.error(f"Observer Agent failed: {e}")
-        return {"reasoning_grade": 0, "critique": "Observer execution failed.", "force_human_review": True}
+        return {
+            "reasoning_grade": 0,
+            "critique": "Observer execution failed.",
+            "force_human_review": True,
+        }
 
 
 async def triage_transaction(message, producer, session, openai_tools, llm_client):
@@ -144,7 +154,9 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                 tool_name = tool_call.function.name
 
                 args_str = tool_call.function.arguments
-                tool_args = json.loads(args_str) if args_str and args_str.strip() else {}
+                tool_args = (
+                    json.loads(args_str) if args_str and args_str.strip() else {}
+                )
 
                 logger.info(f"Agent requested tool: {tool_name}")
                 result = await session.call_tool(tool_name, arguments=tool_args)
@@ -161,15 +173,21 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             current_step += 1
 
         if current_step >= max_steps:
-            logger.warning(f"Agent exceeded max steps. Forcing Escalation.")
-            llm_output = {"confidence": 0.5, "is_fraud": False, "requires_human_review": True,
-                          "reasoning": "Loop detected."}
+            logger.warning("Agent exceeded max steps. Forcing Escalation.")
+            llm_output = {
+                "confidence": 0.5,
+                "is_fraud": False,
+                "requires_human_review": True,
+                "reasoning": "Loop detected.",
+            }
         else:
             # Use our bulletproof parser
             llm_output = parse_llm_json(response_message.content)
 
         # PHASE 2: Observer Evaluation (LLM-as-a-Judge)
-        observer_output = await run_observer_evaluation(transaction_data, llm_output, messages, llm_client)
+        observer_output = await run_observer_evaluation(
+            transaction_data, llm_output, messages, llm_client
+        )
 
         transaction_data["agentic_evaluation"] = llm_output
         transaction_data["observer_evaluation"] = observer_output
@@ -180,7 +198,9 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         observer_veto = observer_output.get("force_human_review", False)
 
         if requires_human or observer_veto:
-            logger.warning(f"Routing to HITL: Veto={observer_veto}, Requested={requires_human}, Conf={confidence}")
+            logger.warning(
+                f"Routing to HITL: Veto={observer_veto}, Requested={requires_human}, Conf={confidence}"
+            )
             await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
             HUMAN_REVIEW_CNT.inc()
 
@@ -190,7 +210,9 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             AUTO_PROCESSED_CNT.inc()
 
         elif confidence <= AUTO_APPROVE_THRESHOLD:
-            logger.info(f"Auto-Approving TX: Conf={confidence} <= {AUTO_APPROVE_THRESHOLD}")
+            logger.info(
+                f"Auto-Approving TX: Conf={confidence} <= {AUTO_APPROVE_THRESHOLD}"
+            )
             await producer.send_and_wait(OUT_FINAL_TOPIC, transaction_data)
             AUTO_PROCESSED_CNT.inc()
 

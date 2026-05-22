@@ -50,7 +50,7 @@ def generate_realistic_location(client_type):
             f"{random.uniform(-10.0, 20.0)}, {random.uniform(95.0, 140.0)}",  # SE Asia
             f"{random.uniform(-35.0, 35.0)}, {random.uniform(-17.0, 51.0)}",  # Africa
             f"{random.uniform(40.0, 60.0)}, {random.uniform(20.0, 50.0)}",  # Eastern Europe
-            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}"  # South America
+            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}",  # South America
         ]
         return random.choice(high_risk_zones)
 

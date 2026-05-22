@@ -77,6 +77,7 @@ async def _check_velocity_rule(
         return is_anomaly, reasons
     return False, reasons
 
+
 def is_safe_location(lat: float, lon: float) -> bool:
     """Checks if coordinates fall within expected baseline regions (Italy/US)"""
     # IT Bounding Box (approx 36 to 47 Lat, 6 to 18.5 Lon)
@@ -88,7 +89,9 @@ def is_safe_location(lat: float, lon: float) -> bool:
     return False
 
 
-async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[bool, list[str]]:
+async def check_rules(
+    transaction: dict, redis_client: aioredis.Redis
+) -> tuple[bool, list[str]]:
     """Evaluates deterministic rules tailored to the seeder personas"""
     reasons = []
     is_anomaly = False
@@ -107,7 +110,7 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
         "GBP": 1.25,
         "JPY": 0.0065,
         "CAD": 0.73,
-        "AUD": 0.65
+        "AUD": 0.65,
     }
 
     # Calculate the USD equivalent for our tripwire logic
@@ -137,7 +140,8 @@ async def check_rules(transaction: dict, redis_client: aioredis.Redis) -> tuple[
             if not is_safe_location(lat, lon):
                 is_anomaly = True
                 reasons.append(
-                    f"Location Tripwire: Coordinates ({lat}, {lon}) fall outside standard safe operating regions (IT/US).")
+                    f"Location Tripwire: Coordinates ({lat}, {lon}) fall outside standard safe operating regions (IT/US)."
+                )
     except Exception as e:
         logger.warning(f"Failed to parse location '{location}': {e}")
 

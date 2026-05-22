@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     broker = "localhost:9092"
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
-        value_serializer=lambda v: json.dumps(v).encode("utf-8")
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
     try:
         await producer.start()
@@ -106,10 +106,13 @@ async def get_db_connection():
 
 # API ENDPOINTS
 
+
 @app.post("/api/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """Authenticates the user and returns a JWT"""
-    if form_data.username != ADMIN_USERNAME or not verify_password(form_data.password, ADMIN_PASSWORD_HASH):
+    if form_data.username != ADMIN_USERNAME or not verify_password(
+        form_data.password, ADMIN_PASSWORD_HASH
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -173,8 +176,8 @@ async def get_pending_queue(current_user: str = Depends(get_current_user)):
                 "total_processed": total_processed or 0,
                 "auto_denied": auto_denied or 0,
                 "auto_approved": auto_approved or 0,
-                "automation_rate": auto_rate
-            }
+                "automation_rate": auto_rate,
+            },
         }
     except Exception as e:
         logger.error(f"DB Error: {e}")
@@ -184,13 +187,16 @@ async def get_pending_queue(current_user: str = Depends(get_current_user)):
 
 
 @app.post("/api/resolve/{tx_id}")
-async def resolve_transaction(tx_id: str, request: ResolutionRequest,
-                              current_user: str = Depends(get_current_user)):
+async def resolve_transaction(
+    tx_id: str,
+    request: ResolutionRequest,
+    current_user: str = Depends(get_current_user),
+):
     """Updates DB AND publishes the ground truth to Kafka (Requires JWT)"""
     conn = await get_db_connection()
     try:
-        new_state = 'RESOLVED_SAFE' if request.decision == 'Safe' else 'RESOLVED_FRAUD'
-        ground_truth_label = 'SAFE' if request.decision == 'Safe' else 'FRAUD'
+        new_state = "RESOLVED_SAFE" if request.decision == "Safe" else "RESOLVED_FRAUD"
+        ground_truth_label = "SAFE" if request.decision == "Safe" else "FRAUD"
 
         update_query = "UPDATE transactions SET current_state = $1 WHERE transaction_id = $2 RETURNING *"
         row = await conn.fetchrow(update_query, new_state, int(tx_id))
@@ -203,14 +209,18 @@ async def resolve_transaction(tx_id: str, request: ResolutionRequest,
             "human_label": ground_truth_label,
             "original_amount": row["amount"],
             "original_location": row["location"],
-            "ai_history": json.loads(row["history"]) if row["history"] else {}
+            "ai_history": json.loads(row["history"]) if row["history"] else {},
         }
 
         global producer
-        topic_name = getattr(settings, "kafka_human_resolved_topic", "fraud_human_resolved")
+        topic_name = getattr(
+            settings, "kafka_human_resolved_topic", "fraud_human_resolved"
+        )
         await producer.send_and_wait(topic_name, ground_truth_payload)
 
-        logger.info(f"Published Ground Truth for {tx_id}: {ground_truth_label} by {current_user}")
+        logger.info(
+            f"Published Ground Truth for {tx_id}: {ground_truth_label} by {current_user}"
+        )
         return {"status": "success"}
 
     except Exception as e:
