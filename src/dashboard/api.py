@@ -22,7 +22,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 ADMIN_USERNAME = settings.dashboard_admin_user
-# Hash the plain-text password from the .env file when the server starts
 ADMIN_PASSWORD_HASH = pwd_context.hash(settings.dashboard_admin_password)
 
 
@@ -61,7 +60,7 @@ producer = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global producer
-    broker = "localhost:9092"
+    broker = "localhost:9092"  # to fix for k8s deploy, there and in other places
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
