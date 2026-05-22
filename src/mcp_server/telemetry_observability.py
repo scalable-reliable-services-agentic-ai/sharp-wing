@@ -33,20 +33,29 @@ async def get_db_connection():
 async def get_user_history(sender_id: int, limit: int = 5) -> str:
     """
     Fetches the recent transaction history for a specific user
-    Use this to establish a baseline of the user's normal behavior
-    (normal amounts, normal locations) to detect Stolen Cards or ATOs
+    Includes state logs and reasons to establish a behavioral baseline
+    and detect Stolen Cards or ATO anomalies.
     """
     logger.info(f"Agent requested history for sender {sender_id}")
     engine = await get_db_connection()
 
     try:
         async with engine.connect() as conn:
+            # Explicitly fetch current_state and fraud_reason
             query = text("""
-                         SELECT transaction_id, amount, location, timestamp_iso, is_fraud
-                         FROM transactions
-                         WHERE sender_id = :sender_id
-                         ORDER BY timestamp_ms DESC LIMIT :limit
-                         """)
+                SELECT 
+                    transaction_id, 
+                    amount, 
+                    location, 
+                    timestamp_iso, 
+                    current_state,
+                    is_fraud, 
+                    fraud_reason
+                FROM transactions
+                WHERE sender_id = :sender_id
+                ORDER BY timestamp_ms DESC 
+                LIMIT :limit;
+            """)
             result = await conn.execute(query, {"sender_id": sender_id, "limit": limit})
             history = [dict(row._mapping) for row in result]
 

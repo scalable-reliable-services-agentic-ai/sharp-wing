@@ -232,7 +232,7 @@ services:
     build:
       context: .
       dockerfile: docker/anomaly_detection.Dockerfile
-    command: python -m src.ml_service.retrain_worker
+    command: python -m src.ml_service.bootstrap
     networks:
       - backend
     env_file:
@@ -245,6 +245,8 @@ services:
         condition: service_healthy
       kafka-topics-creator:
         condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
 
   chaos-monkey:
     build:

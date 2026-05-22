@@ -8,7 +8,10 @@ import joblib
 import os
 from src.config import settings
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "fraud_model.pkl")
+# Absolute path mapped directly to the Docker shared volume mount point
+OUTPUT_DIR = "/app/src/ml_service/models"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+model_save_path = os.path.join(OUTPUT_DIR, "fraud_model.pkl")
 
 
 async def fetch_combined_training_data():
@@ -63,7 +66,7 @@ def preprocess_and_train(rows):
     # Keep parameters highly constrained to prevent overfitting on simulation data
     model = XGBClassifier(
         n_estimators=100,
-        max_depth=3,  # Shalled trees prevent memorization of exact coordinate blocks
+        max_depth=3,  # Shallow trees prevent memorization of exact coordinate blocks
         learning_rate=0.05,
         scale_pos_weight=4,
         random_state=42,
@@ -82,9 +85,9 @@ def preprocess_and_train(rows):
     print("\nPerformance Evaluation on 100% Unseen Test Set:")
     print(classification_report(y_test, preds, target_names=['Safe', 'Fraud']))
 
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    joblib.dump(model, MODEL_PATH)
-    print(f"Generalized model saved to {MODEL_PATH}")
+    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+    joblib.dump(model, model_save_path)
+    print(f"Generalized model saved to {model_save_path}")
 
 
 if __name__ == "__main__":
