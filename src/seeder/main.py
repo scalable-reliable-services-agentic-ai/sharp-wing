@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import psycopg2
 from psycopg2.extras import execute_values
@@ -9,7 +10,6 @@ from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
 
 logger = configure_logging(__name__)
-
 
 fake = Faker()
 
@@ -265,6 +265,16 @@ def load_to_db(conn, transactions_data):
 if __name__ == "__main__":
     logger.info("Connecting to PostgreSQL...")
     with setup_db() as conn:
+
+        # Idempotency Check
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM transactions;")
+            count = cursor.fetchone()[0]
+
+            if count > 0:
+                logger.info(f"Database already contains {count} rows. Skipping seed process.")
+                sys.exit(0)
+
         logger.info("Generating clients...")
         clients = generate_client_data(num_clients=5000)
 

@@ -15,7 +15,7 @@ BATCH_INTERVAL = settings.batch_interval
 KAFKA_BROKER = settings.kafka_broker
 DATABASE_URL = settings.async_database_url
 
-# Environment and Constants
+# Topics
 TOPICS = [
     settings.kafka_noanomaly_transactions_topic,
     settings.kafka_final_transactions_topic,
@@ -53,7 +53,6 @@ async def setup_database(engine):
 async def get_kafka_consumer():
     while True:
         try:
-            # We now pass the TOPICS list directly
             consumer = AIOKafkaConsumer(
                 *TOPICS,
                 bootstrap_servers=KAFKA_BROKER,
@@ -69,7 +68,6 @@ async def get_kafka_consumer():
             await asyncio.sleep(5)
 
 
-# Main Application
 async def main():
     consumer = await get_kafka_consumer()
     engine = await get_db_engine()
@@ -85,33 +83,43 @@ async def main():
                 for tp, messages in result.items():
                     for message in messages:
                         tx_data = message.value
-
-                        # AI Data Extraction & Status Routing
                         topic_name = tp.topic
 
+                        # Extract routing and score indicators
+                        s1_routing = tx_data.pop("system_1_routing", None)
+                        s1_ml_score = tx_data.pop("system_1_ml_score", None)
+
+                        # Dynamic audit state resolution engine
                         if topic_name == settings.kafka_human_review_required_topic:
                             tx_data["current_state"] = "ESCALATED"
                         elif topic_name == settings.kafka_final_transactions_topic:
-                            tx_data["current_state"] = "AI_RESOLVED"
+                            if s1_routing == "ML_AUTO_DENIED":
+                                tx_data["current_state"] = "AUTO_DENIED"
+                            else:
+                                tx_data["current_state"] = "AI_RESOLVED"
                         else:
-                            tx_data["current_state"] = "CLEARED_SYSTEM_1"
+                            if s1_routing == "ML_AUTO_APPROVED":
+                                tx_data["current_state"] = "AUTO_APPROVED"
+                            else:
+                                tx_data["current_state"] = "CLEARED_SYSTEM_1"
 
-                        # Extract the reasoning dictionaries (OUTDENTED so it always runs!)
+                        # Extract the reasoning dictionaries
                         ai_eval = tx_data.pop("agentic_evaluation", {})
                         sys1_reasons = tx_data.pop("system_1_reasons", [])
                         obs_eval = tx_data.pop("observer_evaluation", {})
 
-                        # Safely ensure history is a dictionary
                         if "history" not in tx_data or not isinstance(tx_data["history"], dict):
                             tx_data["history"] = {}
 
-                        # ADD to the existing dictionary
+                        # Append historical traces
                         if sys1_reasons:
                             tx_data["history"]["system_1"] = sys1_reasons
                         if ai_eval:
                             tx_data["history"]["system_2"] = ai_eval
                         if obs_eval:
                             tx_data["history"]["observer_evaluation"] = obs_eval
+                        if s1_ml_score is not None:
+                            tx_data["history"]["system_1_ml_score"] = s1_ml_score
 
                         buffer.append(tx_data)
 

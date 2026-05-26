@@ -13,11 +13,14 @@ logger = configure_logging(__name__)
 IN_TOPIC = settings.kafka_validated_transactions_topic
 OUT_SAFE_TOPIC = settings.kafka_noanomaly_transactions_topic
 OUT_ANOMALY_TOPIC = settings.kafka_anomaly_detected_transactions_topic
+# Directly route definitive ML decisions to the final persistence layer
+OUT_FINAL_TOPIC = settings.kafka_final_transactions_topic
 
-# Probability cut-off boundary. Scores higher than this go directly to the multi-agent triage step
-ML_RISK_THRESHOLD = 0.65
+# Calibrated MLOps Sieve Gate Cut-offs
+ML_AUTO_DENY_THRESHOLD = 0.80
+ML_AUTO_APPROVE_THRESHOLD = 0.15
 
-# Instantiated globally to maintain cached file handle handles across async loops
+# Instantiated globally to maintain cached file handles across async loops
 ml_engine = FraudMLInference()
 
 
@@ -141,21 +144,21 @@ async def process_message(message, producer: AIOKafkaProducer, redis_client: aio
         is_deterministic_anomaly, reasons = await check_deterministic_rules(transaction, redis_client)
 
         if is_deterministic_anomaly:
-            logger.warning(f"Deterministic Rule Tripped [TX: {tx_id}] -> Escalating to Agents. Reason: {reasons}")
+            # Rule Tripped: Route straight to the expensive Agent layer for investigation
+            logger.warning(f"Deterministic Rule Tripped [TX: {tx_id}] -> Escalating Straight to Agents. Reason: {reasons}")
             transaction["system_1_reasons"] = reasons
+            transaction["system_1_routing"] = "DETERMINISTIC_ESCALATION"
             await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
             return
 
         # 2. Advanced Probabilistic Evaluation (System 1 Machine Learning Layer)
         scores = ml_engine.evaluate_transaction_risk(amount, location)
-        risk_score = scores["routing_score"]  # This drives the real Kafka routing
+        risk_score = scores["routing_score"]
 
         if scores["shadow_active"]:
             logger.info(
                 f"Shadow Audit [TX: {tx_id}] -> Champion: {scores['champion_score']:.2f} | Challenger: {scores['challenger_score']:.2f}")
 
-            # Pack the shadow telemetry metrics directly into the transaction dictionary
-            # This ensures both scores get written to the PostgreSQL history jsonb log
             if "history" not in transaction or not isinstance(transaction["history"], dict):
                 transaction["history"] = {}
             transaction["history"]["shadow_metrics"] = {
@@ -163,16 +166,29 @@ async def process_message(message, producer: AIOKafkaProducer, redis_client: aio
                 "challenger_score": scores["challenger_score"]
             }
 
-        if risk_score >= ML_RISK_THRESHOLD:
-            logger.warning(
-                f"Probabilistic Layer Alert [TX: {tx_id}] -> Risk Score: {risk_score:.2f} -> Routing to Agents.")
-            transaction["system_1_reasons"] = [
-                f"ML Probability Matrix Violation: Risk score ({risk_score:.2f}) over safety limits."]
-            await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
-        else:
-            # Passes both checks cleanly -> Safe direct throughput auto-approval
-            logger.info(f"Auto-Approved [TX: {tx_id}] (ML Score: {risk_score:.2f})")
+        # Inject risk parameters for downstream visibility
+        transaction["system_1_ml_score"] = risk_score
+
+        # SYSTEM 1 AUTOMATION GATES (Cost-Saving Sieve Configuration)
+        if risk_score >= ML_AUTO_DENY_THRESHOLD:
+            # AUTO-DENY: Clean operational intercept, skipping System 2 completely
+            logger.error(f"[Sieve Gate - AUTO-DENY] TX: {tx_id} | ML Score: {risk_score:.2f} >= {ML_AUTO_DENY_THRESHOLD}. Dropping from Agent Queue.")
+            transaction["system_1_reasons"] = [f"ML Automated Intercept: High probability fraud score ({risk_score:.2f})."]
+            transaction["system_1_routing"] = "ML_AUTO_DENIED"
+            await producer.send_and_wait(OUT_FINAL_TOPIC, transaction)
+
+        elif risk_score <= ML_AUTO_APPROVE_THRESHOLD:
+            # AUTO-APPROVE: Verified safe throughput, skipping System 2 completely
+            logger.info(f"[Sieve Gate - AUTO-APPROVE] TX: {tx_id} | ML Score: {risk_score:.2f} <= {ML_AUTO_APPROVE_THRESHOLD}. Passing to Settlement.")
+            transaction["system_1_routing"] = "ML_AUTO_APPROVED"
             await producer.send_and_wait(OUT_SAFE_TOPIC, transaction)
+
+        else:
+            # GREY ZONE: XGBoost is unsure. Escalating to the LLM Agent for tool analysis
+            logger.warning(f"🔍 [Sieve Gate - AGENT TRIAGE REQUIRED] TX: {tx_id} | ML Score: {risk_score:.2f} falls inside Grey Zone. Engaging System 2 Agent.")
+            transaction["system_1_reasons"] = [f"ML Ambiguity Escalation: Risk score ({risk_score:.2f}) falls in Grey Zone ($0.15 - $0.80$)."]
+            transaction["system_1_routing"] = "ML_GREY_ZONE_ESCALATION"
+            await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
 
     except Exception as e:
         logger.error(f"Failed to process transaction cycle for {tx_id}: {e}")
@@ -194,7 +210,7 @@ async def main():
 
     await consumer.start()
     await producer.start()
-    logger.info(f"System 1 Pipeline Operating (Static Routing + ML Module) Listening on: {IN_TOPIC}")
+    logger.info(f"System 1 Pipeline Operating (Optimized Sieve Gate Automation) Listening on: {IN_TOPIC}")
 
     try:
         async for message in consumer:

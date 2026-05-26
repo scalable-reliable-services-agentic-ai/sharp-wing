@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from src.config import settings, configure_logging
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -106,12 +106,28 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         current_step = 0
 
         while current_step < max_steps:
-            response = await llm_client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-                tools=openai_tools,
-                temperature=0.0,
-            )
+            # Wrap LLM Execution in a Rate-Limit Resilient Retry Block
+            max_retries = 5
+            backoff_in_seconds = 15
+            response = None
+
+            for attempt in range(max_retries):
+                try:
+                    response = await llm_client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=messages,
+                        tools=openai_tools,
+                        temperature=0.0,
+                    )
+                    break  # Success! Break out of the retry loop.
+                except Exception as e:
+                    if "429" in str(e) and attempt < max_retries - 1:
+                        logger.warning(f"Rate limited (429) during Agent Triage loop. Retrying in {backoff_in_seconds}s (Attempt {attempt + 1}/{max_retries})...")
+                        await asyncio.sleep(backoff_in_seconds)
+                        backoff_in_seconds *= 2  # Exponential backoff escalation
+                    else:
+                        logger.error(f"Execution crashed or exhausted retries on step {current_step}: {e}")
+                        raise e
 
             response_message = response.choices[0].message
             messages.append(response_message)
@@ -145,8 +161,24 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             # Use our bulletproof parser
             llm_output = parse_llm_json(response_message.content)
 
-        # PHASE 2: Observer Evaluation (LLM-as-a-Judge)
-        observer_output = await run_observer_evaluation(transaction_data, llm_output, messages, llm_client)
+        # PHASE 2: Observer Evaluation (LLM-as-a-Judge) with integrated backoff logic
+        max_observer_retries = 3
+        observer_backoff = 4
+        observer_output = None
+
+        for attempt in range(max_observer_retries):
+            try:
+                observer_output = await run_observer_evaluation(transaction_data, llm_output, messages, llm_client)
+                break
+            except Exception as e:
+                if "429" in str(e) and attempt < max_observer_retries - 1:
+                    logger.warning(f"Rate limited (429) during Observer Judge loop. Retrying in {observer_backoff}s...")
+                    await asyncio.sleep(observer_backoff)
+                    observer_backoff *= 2
+                else:
+                    logger.error(f"Observer processing failed permanently: {e}")
+                    observer_output = {"reasoning_grade": 0, "critique": "Observer execution failed due to rate limits.", "force_human_review": True}
+                    break
 
         transaction_data["agentic_evaluation"] = llm_output
         transaction_data["observer_evaluation"] = observer_output
