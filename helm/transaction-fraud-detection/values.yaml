@@ -26,6 +26,13 @@ redis:
   master:
     persistence:
       enabled: true
+    resources:              # My laptop is having constant 100% usage, so I needed to extend these values
+      limits:
+        cpu: 750m           # 150m by default
+        memory: 256Mi
+    readinessProbe:
+      timeoutSeconds: 8     # 2 by default
+      failureThreshold: 10  # K8s witll try 10 times before rising warning / failure
 
 
 timescaledb:

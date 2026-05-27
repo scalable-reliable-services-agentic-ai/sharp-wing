@@ -38,13 +38,22 @@ and
 
 ### prequirements
 
-1. install helm:
+1. install `helm`:
 ```bash
 ```
 
-1. install kubectl:
+1. install `kubectl`:
 ```bash
 ```
+
+1. install `npm`:
+```bash
+```
+
+1. install `vite`:
+```bash
+```
+
 
 ### building
 
@@ -91,7 +100,22 @@ docker compose build
     helm install transaction-fraud-detection ./helm/transaction-fraud-detection
     ```
 
-### monitoring app
+#### connecting kubernetes network with local browser
+
+1. run this script
+    ```bash
+    ./apptunnels.sh
+    ```
+    it will automatically set the proper tunnels, so it is available then to connect from local browser to k8s network.
+
+- 🌐 API:         http://127.0.0.1:8000
+
+- 📊 Grafana:     http://127.0.0.1:30300
+
+- 📈 Prometheus:  http://127.0.0.1:30090
+
+
+### app logs
 
 ```bash
 kubectl get pods
