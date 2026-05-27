@@ -9,7 +9,23 @@ from openai import AsyncOpenAI
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from prometheus_client import Counter
+from src.prometheus_metrics.metrics import start_metrics_server
+
 logger = configure_logging(__name__)
+
+
+# --- Metrics Definition ---
+HUMAN_REVIEW_CNT = Counter(
+    "human_review_required_transactions",
+    "Number of transactions requiring human review",
+)
+
+AUTO_PROCESSED_CNT = Counter(
+    "auto_processed_transactions",
+    "Number of transactions automatically processed by the agent",
+)
+
 
 MODEL_PROXY = settings.litellm_proxy_url
 MODEL_KEY = settings.litellm_api_key
@@ -40,16 +56,16 @@ def parse_llm_json(raw_text: str) -> dict:
 
     # 1. Try to extract content inside markdown backticks if they exist
     # (Escaped to prevent chat UI markdown crashes)
-    match = re.search(r'\`\`\`(?:json)?\s*(.*?)\s*\`\`\`', clean_text, re.DOTALL)
+    match = re.search(r"\`\`\`(?:json)?\s*(.*?)\s*\`\`\`", clean_text, re.DOTALL)
     if match:
         clean_text = match.group(1)
 
     # 2. Find the first '{' and the last '}' to ignore any chatty preamble
-    start = clean_text.find('{')
-    end = clean_text.rfind('}')
+    start = clean_text.find("{")
+    end = clean_text.rfind("}")
 
     if start != -1 and end != -1:
-        clean_text = clean_text[start:end + 1]
+        clean_text = clean_text[start : end + 1]
 
     try:
         return json.loads(clean_text)
@@ -58,19 +74,23 @@ def parse_llm_json(raw_text: str) -> dict:
         raise e
 
 
-async def run_observer_evaluation(transaction_data, triage_analysis, tool_history, llm_client):
+async def run_observer_evaluation(
+    transaction_data, triage_analysis, tool_history, llm_client
+):
     """LLM-as-a-Judge: Evaluates the Triage Agent's reasoning"""
-    logger.info(f"Observer Agent evaluating triage logic for TX: {transaction_data.get('transaction_id')}")
+    logger.info(
+        f"Observer Agent evaluating triage logic for TX: {transaction_data.get('transaction_id')}"
+    )
 
     payload = {
         "transaction_data": transaction_data,
         "investigation_history": str(tool_history),
-        "triage_analysis": triage_analysis
+        "triage_analysis": triage_analysis,
     }
 
     messages = [
         {"role": "system", "content": OBSERVER_PROMPT},
-        {"role": "user", "content": json.dumps(payload)}
+        {"role": "user", "content": json.dumps(payload)},
     ]
 
     try:
@@ -78,28 +98,38 @@ async def run_observer_evaluation(transaction_data, triage_analysis, tool_histor
             model=MODEL_NAME,
             messages=messages,
             temperature=0.0,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
         )
 
         # Use our bulletproof parser
         observer_output = parse_llm_json(response.choices[0].message.content)
 
-        logger.info(f"Observer Grade: {observer_output.get('reasoning_grade')}/5 - {observer_output.get('critique')}")
+        logger.info(
+            f"Observer Grade: {observer_output.get('reasoning_grade')}/5 - {observer_output.get('critique')}"
+        )
         return observer_output
     except Exception as e:
         logger.error(f"Observer Agent failed: {e}")
-        return {"reasoning_grade": 0, "critique": "Observer execution failed.", "force_human_review": True}
+        return {
+            "reasoning_grade": 0,
+            "critique": "Observer execution failed.",
+            "force_human_review": True,
+        }
 
 
 async def triage_transaction(message, producer, session, openai_tools, llm_client):
     transaction_data = message.value
-    tx_id = transaction_data.get('transaction_id')
+    tx_id = transaction_data.get("transaction_id")
     logger.info(f"Agent investigating transaction: {tx_id}")
+    logger.info(
+        f"System 1 Reasons: {transaction_data.get('system_1_reasons', 'Unknown')}"
+    )
 
+    raw_content = ""
     try:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(transaction_data)}
+            {"role": "user", "content": json.dumps(transaction_data)},
         ]
 
         max_steps = 5
@@ -111,6 +141,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                 messages=messages,
                 tools=openai_tools,
                 temperature=0.0,
+                # response_format={"type": "json_object"},  # maybe its worth to add also
             )
 
             response_message = response.choices[0].message
@@ -123,30 +154,40 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
                 tool_name = tool_call.function.name
 
                 args_str = tool_call.function.arguments
-                tool_args = json.loads(args_str) if args_str and args_str.strip() else {}
+                tool_args = (
+                    json.loads(args_str) if args_str and args_str.strip() else {}
+                )
 
                 logger.info(f"Agent requested tool: {tool_name}")
                 result = await session.call_tool(tool_name, arguments=tool_args)
 
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": result.content[0].text
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": result.content[0].text,
+                    }
+                )
 
             current_step += 1
 
         if current_step >= max_steps:
-            logger.warning(f"Agent exceeded max steps. Forcing Escalation.")
-            llm_output = {"confidence": 0.5, "is_fraud": False, "requires_human_review": True,
-                          "reasoning": "Loop detected."}
+            logger.warning("Agent exceeded max steps. Forcing Escalation.")
+            llm_output = {
+                "confidence": 0.5,
+                "is_fraud": False,
+                "requires_human_review": True,
+                "reasoning": "Loop detected.",
+            }
         else:
             # Use our bulletproof parser
             llm_output = parse_llm_json(response_message.content)
 
         # PHASE 2: Observer Evaluation (LLM-as-a-Judge)
-        observer_output = await run_observer_evaluation(transaction_data, llm_output, messages, llm_client)
+        observer_output = await run_observer_evaluation(
+            transaction_data, llm_output, messages, llm_client
+        )
 
         transaction_data["agentic_evaluation"] = llm_output
         transaction_data["observer_evaluation"] = observer_output
@@ -157,23 +198,43 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         observer_veto = observer_output.get("force_human_review", False)
 
         if requires_human or observer_veto:
-            logger.warning(f"Routing to HITL: Veto={observer_veto}, Requested={requires_human}, Conf={confidence}")
+            logger.warning(
+                f"Routing to HITL: Veto={observer_veto}, Requested={requires_human}, Conf={confidence}"
+            )
             await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
+            HUMAN_REVIEW_CNT.inc()
 
         elif confidence >= AUTO_DENY_THRESHOLD:
             logger.info(f"Auto-Denying TX: Conf={confidence} >= {AUTO_DENY_THRESHOLD}")
             await producer.send_and_wait(OUT_FINAL_TOPIC, transaction_data)
+            AUTO_PROCESSED_CNT.inc()
 
         elif confidence <= AUTO_APPROVE_THRESHOLD:
-            logger.info(f"Auto-Approving TX: Conf={confidence} <= {AUTO_APPROVE_THRESHOLD}")
+            logger.info(
+                f"Auto-Approving TX: Conf={confidence} <= {AUTO_APPROVE_THRESHOLD}"
+            )
             await producer.send_and_wait(OUT_FINAL_TOPIC, transaction_data)
+            AUTO_PROCESSED_CNT.inc()
 
         else:
             logger.warning(f"Routing to HITL: TX in Grey Zone (Conf={confidence})")
             await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
+            HUMAN_REVIEW_CNT.inc()
+
+    except json.JSONDecodeError as e:
+        logger.warning(
+            f"Failed to parse LLM output: {llm_output}. Error: {e}", exc_info=True
+        )
+        llm_output = {
+            "requires_human_review": True,
+            "reasoning": f"System forced human review due to unparsable LLM output: {raw_content[:100]}...",
+        }
+        transaction_data["agentic_evaluation"] = llm_output
+        await producer.send_and_wait(OUT_REVIEW_TOPIC, transaction_data)
+        HUMAN_REVIEW_CNT.inc()
 
     except Exception as e:
-        logger.error(f"Error during LLM triage: {e}")
+        logger.error(f"Error during LLM triage: {e}", exc_info=True)
 
 
 async def main():
@@ -196,9 +257,10 @@ async def main():
     logger.info(f"System 2 LLM Triage Agent & Observer listening on: {IN_TOPIC}")
 
     server_params = StdioServerParameters(
+        # command="python", args=["-m", "src.mcp_server.server"], env={**os.environ}
         command="python",
         args=["-m", "src.mcp_server.telemetry_observability"],
-        env={**os.environ}
+        env={**os.environ},
     )
     llm_client = AsyncOpenAI(api_key=MODEL_KEY, base_url=MODEL_PROXY)
 
@@ -208,19 +270,31 @@ async def main():
                 await session.initialize()
                 mcp_tools = await session.list_tools()
 
-                openai_tools = [{"type": "function", "function": {"name": t.name, "description": t.description,
-                                                                  "parameters": t.inputSchema}} for t in
-                                mcp_tools.tools]
+                openai_tools = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.inputSchema,
+                        },
+                    }
+                    for t in mcp_tools.tools
+                ]
+                logger.info("MCP Server initialized and tools loaded successfully.")
 
                 async for message in consumer:
-                    await triage_transaction(message, producer, session, openai_tools, llm_client)
+                    await triage_transaction(
+                        message, producer, session, openai_tools, llm_client
+                    )
 
     except Exception as e:
-        logger.error(f"Fatal error in main loop: {e}")
+        logger.error(f"Fatal error in main loop: {e}", exc_info=True)
     finally:
         await consumer.stop()
         await producer.stop()
 
 
 if __name__ == "__main__":
+    start_metrics_server(8003)
     asyncio.run(main())

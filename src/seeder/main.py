@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from faker import Faker
 from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
+import math
+import time
 
 logger = configure_logging(__name__)
 
@@ -21,16 +23,41 @@ DB_CONFIG = {
     "host": settings.db_host,
     "port": settings.postgres_port,
 }
+MAX_RETRIES = 6
 
 
+# possible to use tenacity lib later:
+# @retry(
+#     stop=stop_after_attempt(5),                                     # Maksymalnie 5 prób
+#     wait=wait_fixed(5),                                             # Czekaj 5 sekund pomiędzy próbami
+#     retry=retry_if_exception_type(psycopg2.OperationalError),       # Ponawiaj tylko przy błędach z połączeniem
+#     before_sleep=before_sleep_log(logger, logging.WARNING)          # Loguj każdą nieudaną próbę jako WARNING
+# )
 def setup_db():
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    conn = psycopg2.connect(**DB_CONFIG)
-    with conn.cursor() as cursor:
-        with open(os.path.join(current_dir, "sql/setup.sql"), "r") as f:
-            cursor.execute(f.read())
-    conn.commit()
-    return conn
+    RETRIES = 0
+
+    while RETRIES < MAX_RETRIES:
+        try:
+            logger.info(f"Attempt {RETRIES + 1} to connect to DB...")
+            conn = psycopg2.connect(**DB_CONFIG)
+            with conn.cursor() as cursor:
+                with open(os.path.join(current_dir, "sql/setup.sql"), "r") as f:
+                    cursor.execute(f.read())
+            conn.commit()
+            return conn
+        except psycopg2.OperationalError as e:
+            logger.warning(f"Attempt {RETRIES + 1} failed: {e}")
+            RETRIES += 1
+            if RETRIES <= MAX_RETRIES:
+                retry_time = 10 * math.floor((RETRIES + 1) ** 2 / 2)
+                logger.info(f"Retrying in {retry_time} seconds...")
+                time.sleep(retry_time)
+            else:
+                logger.error("Max retries reached. Stopping attempts to connect to DB.")
+                raise
+    else:
+        raise Exception("Failed to connect to database after multiple attempts")
 
 
 def get_approx_geolocation(region):
@@ -264,14 +291,17 @@ def load_to_db(conn, transactions_data):
 
 if __name__ == "__main__":
     logger.info("Connecting to PostgreSQL...")
-    with setup_db() as conn:
-        logger.info("Generating clients...")
-        clients = generate_client_data(num_clients=5000)
+    try:
+        with setup_db() as conn:
+            logger.info("Generating clients...")
+            clients = generate_client_data(num_clients=5000)
 
-        logger.info("Generating transactions based on personas...")
-        transactions_data = generate_transactions(clients, target_rows=15000)
+            logger.info("Generating transactions based on personas...")
+            transactions_data = generate_transactions(clients, target_rows=15000)
 
-        logger.info("Loading data into Database...")
-        load_to_db(conn, transactions_data)
+            logger.info("Loading data into Database...")
+            load_to_db(conn, transactions_data)
+            logger.info("Database seeding complete!")
 
-    logger.info("Database seeding complete!")
+    except Exception as e:
+        logger.error(f"An error occurred during seeding: {e}")

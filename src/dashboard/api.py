@@ -9,7 +9,12 @@ import asyncpg
 from aiokafka import AIOKafkaProducer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from src.config import settings, configure_logging
+
+try:
+    from src.config import settings, configure_logging
+except ImportError:
+    from config import settings, configure_logging
+
 
 logger = configure_logging(__name__)
 
@@ -22,7 +27,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 ADMIN_USERNAME = settings.dashboard_admin_user
-# Hash the plain-text password from the .env file when the server starts
 ADMIN_PASSWORD_HASH = pwd_context.hash(settings.dashboard_admin_password)
 
 
@@ -61,10 +65,11 @@ producer = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global producer
-    broker = "localhost:9092"
+    # broker = "localhost:9092"  # to fix for k8s deploy, there and in other places
+    broker = getattr(settings, "kafka_broker", "localhost:9092")
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
-        value_serializer=lambda v: json.dumps(v).encode("utf-8")
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
     try:
         await producer.start()
@@ -96,7 +101,7 @@ class ResolutionRequest(BaseModel):
 
 async def get_db_connection():
     return await asyncpg.connect(
-        host="localhost",
+        host=getattr(settings, "db_host", "localhost"),  # host="localhost",
         port=getattr(settings, "postgres_port", 5432),
         user=getattr(settings, "postgres_user", "postgres"),
         password=getattr(settings, "postgres_password", "password"),
@@ -106,10 +111,13 @@ async def get_db_connection():
 
 # API ENDPOINTS
 
+
 @app.post("/api/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """Authenticates the user and returns a JWT"""
-    if form_data.username != ADMIN_USERNAME or not verify_password(form_data.password, ADMIN_PASSWORD_HASH):
+    if form_data.username != ADMIN_USERNAME or not verify_password(
+        form_data.password, ADMIN_PASSWORD_HASH
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -173,8 +181,8 @@ async def get_pending_queue(current_user: str = Depends(get_current_user)):
                 "total_processed": total_processed or 0,
                 "auto_denied": auto_denied or 0,
                 "auto_approved": auto_approved or 0,
-                "automation_rate": auto_rate
-            }
+                "automation_rate": auto_rate,
+            },
         }
     except Exception as e:
         logger.error(f"DB Error: {e}")
@@ -184,13 +192,16 @@ async def get_pending_queue(current_user: str = Depends(get_current_user)):
 
 
 @app.post("/api/resolve/{tx_id}")
-async def resolve_transaction(tx_id: str, request: ResolutionRequest,
-                              current_user: str = Depends(get_current_user)):
+async def resolve_transaction(
+    tx_id: str,
+    request: ResolutionRequest,
+    current_user: str = Depends(get_current_user),
+):
     """Updates DB AND publishes the ground truth to Kafka (Requires JWT)"""
     conn = await get_db_connection()
     try:
-        new_state = 'RESOLVED_SAFE' if request.decision == 'Safe' else 'RESOLVED_FRAUD'
-        ground_truth_label = 'SAFE' if request.decision == 'Safe' else 'FRAUD'
+        new_state = "RESOLVED_SAFE" if request.decision == "Safe" else "RESOLVED_FRAUD"
+        ground_truth_label = "SAFE" if request.decision == "Safe" else "FRAUD"
 
         update_query = "UPDATE transactions SET current_state = $1 WHERE transaction_id = $2 RETURNING *"
         row = await conn.fetchrow(update_query, new_state, int(tx_id))
@@ -203,14 +214,18 @@ async def resolve_transaction(tx_id: str, request: ResolutionRequest,
             "human_label": ground_truth_label,
             "original_amount": row["amount"],
             "original_location": row["location"],
-            "ai_history": json.loads(row["history"]) if row["history"] else {}
+            "ai_history": json.loads(row["history"]) if row["history"] else {},
         }
 
         global producer
-        topic_name = getattr(settings, "kafka_human_resolved_topic", "fraud_human_resolved")
+        topic_name = getattr(
+            settings, "kafka_human_resolved_topic", "fraud_human_resolved"
+        )
         await producer.send_and_wait(topic_name, ground_truth_payload)
 
-        logger.info(f"Published Ground Truth for {tx_id}: {ground_truth_label} by {current_user}")
+        logger.info(
+            f"Published Ground Truth for {tx_id}: {ground_truth_label} by {current_user}"
+        )
         return {"status": "success"}
 
     except Exception as e:

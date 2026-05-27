@@ -36,7 +36,7 @@ def fetch_existing_clients():
         logger.info(f"Successfully loaded {len(clients)} existing clients.")
         return clients
     except Exception as e:
-        logger.error(f"Failed to fetch clients from Database: {e}")
+        logger.error(f"Failed to fetch clients from Database: {e}", exc_info=True)
         return []
 
 
@@ -50,7 +50,7 @@ def generate_realistic_location(client_type):
             f"{random.uniform(-10.0, 20.0)}, {random.uniform(95.0, 140.0)}",  # SE Asia
             f"{random.uniform(-35.0, 35.0)}, {random.uniform(-17.0, 51.0)}",  # Africa
             f"{random.uniform(40.0, 60.0)}, {random.uniform(20.0, 50.0)}",  # Eastern Europe
-            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}"  # South America
+            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}",  # South America
         ]
         return random.choice(high_risk_zones)
 
@@ -123,7 +123,7 @@ async def get_kafka_producer():
             logger.info("AIOKafkaProducer connected.")
             return producer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -174,7 +174,7 @@ async def main():
 
                 # Log success or fraud
                 if getattr(transaction, "is_fraud", False) or transaction_data.get(
-                        "is_fraud"
+                    "is_fraud"
                 ):
                     logger.warning(
                         f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}"
@@ -188,7 +188,7 @@ async def main():
                 await asyncio.sleep(random.uniform(min_sleep, max_sleep))
 
             except Exception as e:
-                logger.error(f"An error occurred in the main loop: {e}")
+                logger.error(f"An error occurred in the main loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
     finally:
         await producer.stop()

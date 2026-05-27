@@ -8,6 +8,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from src.config import settings, configure_logging
 from src.database.models import Base, Transaction
 
+from prometheus_client import Counter
+from src.prometheus_metrics.metrics import start_metrics_server
+
 logger = configure_logging(__name__)
 
 BATCH_SIZE = settings.batch_size
@@ -19,8 +22,14 @@ DATABASE_URL = settings.async_database_url
 TOPICS = [
     settings.kafka_noanomaly_transactions_topic,
     settings.kafka_final_transactions_topic,
-    settings.kafka_human_review_required_topic
+    settings.kafka_human_review_required_topic,
 ]
+
+# --- Metrics Definition ---
+APP_TRANSACTIONS_CNT_INSERTED_DB = Counter(
+    "app_tfd_inserted_transactions",
+    "Number of transactions inserted/ingested into the database",
+)
 
 
 async def get_db_engine():
@@ -31,7 +40,10 @@ async def get_db_engine():
                 logger.info("Database connection established successfully")
                 return engine
         except Exception as e:
-            logger.error(f"Could not connect to database: {e}. Retrying in 5 seconds...")
+            logger.error(
+                f"Could not connect to database: {e}. Retrying in 5 seconds...",
+                exc_info=True,
+            )
             await asyncio.sleep(5)
 
 
@@ -43,11 +55,12 @@ async def setup_database(engine):
         async with engine.connect() as connection:
             await connection.execute(
                 text(
-                    "SELECT create_hypertable('transactions', 'timestamp_ms', if_not_exists => TRUE, chunk_time_interval => 86400000);")
+                    "SELECT create_hypertable('transactions', 'timestamp_ms', if_not_exists => TRUE, chunk_time_interval => 86400000);"
+                )
             )
             await connection.commit()
     except Exception as e:
-        pass
+        logger.error(f"Error setting up hypertable: {e}", exc_info=True)
 
 
 async def get_kafka_consumer():
@@ -65,7 +78,9 @@ async def get_kafka_consumer():
             logger.info(f"Ingestor connected to End-State Topics: {TOPICS}")
             return consumer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...")
+            logger.error(
+                f"Could not connect to Kafka consumer: {e}. Retrying...", exc_info=True
+            )
             await asyncio.sleep(5)
 
 
@@ -101,8 +116,10 @@ async def main():
                         sys1_reasons = tx_data.pop("system_1_reasons", [])
                         obs_eval = tx_data.pop("observer_evaluation", {})
 
-                        # Safely ensure history is a dictionary
-                        if "history" not in tx_data or not isinstance(tx_data["history"], dict):
+                        # Safely ensure history is a dictionary (in case it's missing)
+                        if "history" not in tx_data or not isinstance(
+                            tx_data["history"], dict
+                        ):
                             tx_data["history"] = {}
 
                         # ADD to the existing dictionary
@@ -115,8 +132,11 @@ async def main():
 
                         buffer.append(tx_data)
 
+                APP_TRANSACTIONS_CNT_INSERTED_DB.inc(len(result))
                 time_since_last_flush = time.time() - last_flush_time
-                if len(buffer) >= BATCH_SIZE or (time_since_last_flush > BATCH_INTERVAL and buffer):
+                if len(buffer) >= BATCH_SIZE or (
+                    time_since_last_flush > BATCH_INTERVAL and buffer
+                ):
                     async with engine.connect() as connection:
                         stmt = pg_insert(Transaction).values(buffer)
                         stmt = stmt.on_conflict_do_nothing(
@@ -130,7 +150,10 @@ async def main():
                     last_flush_time = time.time()
 
             except Exception as e:
-                logger.error(f"An error occurred during the batch insert loop: {e}")
+                logger.error(
+                    f"An error occurred during the batch insert loop: {e}",
+                    exc_info=True,
+                )
                 buffer = []
     finally:
         await consumer.stop()
@@ -138,4 +161,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    start_metrics_server(8004)
     asyncio.run(main())

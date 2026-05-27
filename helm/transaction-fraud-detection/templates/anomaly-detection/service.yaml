@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-anomaly-detection
+  labels:
+    app: anomaly-detection
+spec:
+  selector:
+    app: anomaly-detection
+  ports:
+    - name: metrics
+      port: 8002
+      targetPort: 8002
