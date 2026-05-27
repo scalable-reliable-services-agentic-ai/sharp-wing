@@ -9,7 +9,12 @@ import asyncpg
 from aiokafka import AIOKafkaProducer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from src.config import settings, configure_logging
+
+try:
+    from src.config import settings, configure_logging
+except ImportError:
+    from config import settings, configure_logging
+
 
 logger = configure_logging(__name__)
 
@@ -60,7 +65,8 @@ producer = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global producer
-    broker = "localhost:9092"  # to fix for k8s deploy, there and in other places
+    # broker = "localhost:9092"  # to fix for k8s deploy, there and in other places
+    broker = getattr(settings, "kafka_broker", "localhost:9092")
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
@@ -95,7 +101,7 @@ class ResolutionRequest(BaseModel):
 
 async def get_db_connection():
     return await asyncpg.connect(
-        host="localhost",
+        host=getattr(settings, "db_host", "localhost"),  # host="localhost",
         port=getattr(settings, "postgres_port", 5432),
         user=getattr(settings, "postgres_user", "postgres"),
         password=getattr(settings, "postgres_password", "password"),

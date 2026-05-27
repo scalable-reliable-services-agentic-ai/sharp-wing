@@ -7,9 +7,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 8000
-      targetPort: 8000
+    - name: http
       protocol: TCP
-      name: http
+      port: 8000
+      targetPort: 8000
   selector:
     app: dashboard-api

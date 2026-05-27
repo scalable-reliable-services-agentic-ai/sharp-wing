@@ -37,14 +37,8 @@ services:
       context: .
       dockerfile: docker/fraud_triage.Dockerfile
 
-  reporter:
-    image: srs_reporter:latest
-    build:
-      context: .
-      dockerfile: docker/reporter.Dockerfile
-
   dashboard-api:
     image: srs_dashboard_api:latest
     build:
-      context:
-      dockerfile: docker/dashboard-api.Dockerfile
+      context: .
+      dockerfile: docker/dashboard_api.Dockerfile

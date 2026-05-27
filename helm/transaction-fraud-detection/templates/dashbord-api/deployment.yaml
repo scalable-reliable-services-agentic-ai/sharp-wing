@@ -17,7 +17,6 @@ spec:
       containers:
         - name: dashboard-api
           image: "srs_dashboard_api:latest"
-          # Krytyczna linia dla lokalnego devu: K8s nie będzie szukał obrazu w internecie
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
