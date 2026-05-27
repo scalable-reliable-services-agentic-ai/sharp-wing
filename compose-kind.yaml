@@ -1,0 +1,44 @@
+# # Local images to use in Kubernetes (via Helm)
+
+services:
+  seeder:
+    image: srs_seeder:latest
+    build:
+      context: .
+      dockerfile: docker/seeder.Dockerfile
+
+  generator:
+    image: srs_generator:latest
+    build:
+      context: .
+      dockerfile: docker/generator.Dockerfile
+
+  validator:
+    image: srs_validator:latest
+    build:
+      context: .
+      dockerfile: docker/validator.Dockerfile
+
+  batch-ingestor:
+    image: srs_batch_ingestor:latest
+    build:
+      context: .
+      dockerfile: docker/batch_ingestor.Dockerfile
+
+  anomaly-detection:
+    image: srs_anomaly_detection:latest
+    build:
+      context: .
+      dockerfile: docker/anomaly_detection.Dockerfile
+
+  fraud-triage:
+    image: srs_fraud_triage:latest
+    build:
+      context: .
+      dockerfile: docker/fraud_triage.Dockerfile
+
+  dashboard-api:
+    image: srs_dashboard_api:latest
+    build:
+      context: .
+      dockerfile: docker/dashboard_api.Dockerfile
