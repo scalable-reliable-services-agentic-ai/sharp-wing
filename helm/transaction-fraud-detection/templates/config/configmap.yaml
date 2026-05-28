@@ -4,13 +4,14 @@ metadata:
   name: srs-environment-config
 data:
   # KAFKA_BOOTSTRAP_SERVERS: "transaction-fraud-detection-kafka:9092"
-  KAFKA_BROKER: "transaction-fraud-detection-kafka:9092"
+  KAFKA_BROKER: {{ .Release.Name }}-kafka:9092
 
-  REDIS_HOST: "transaction-fraud-detection-redis-master"
+  REDIS_HOST: {{ .Release.Name }}-redis-master
   REDIS_PORT: "6379"
 
   # POSTGRES_HOST: "transaction-fraud-detection-timescaledb-single"
   DB_HOST: "transaction-fraud-detection-timescaledb"
+  # DB_HOST: {{ .Release.Name }}-timescaledb
   POSTGRES_DB: "transactions"
   POSTGRES_PORT: "5432"
   POSTGRES_USER: "postgres"
@@ -27,8 +28,9 @@ data:
   BATCH_SIZE: "5000"
   BATCH_INTERVAL: "2"
 
-  GENERATOR_MIN_SLEEP_MS: "150"
-  GENERATOR_MAX_SLEEP_MS: "2000"
+  GENERATOR_MIN_SLEEP_MS: "1"
+  GENERATOR_MAX_SLEEP_MS: "3000"
+  GENERATOR_CYCLE_LENGTH_SECONDS: "180"
 
   VALIDATOR_MIN_AMOUNT: "0"
   VALIDATOR_MAX_AMOUNT: "100000"

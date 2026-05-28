@@ -10,7 +10,7 @@ spec:
     kind: Deployment
     name: validator 
   minReplicas: 2
-  # maxReplicas: 
+  maxReplicas: 10
   metrics:
     - type: Resource
       resource:

@@ -5,6 +5,8 @@ import psycopg2
 from aiokafka import AIOKafkaProducer
 from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
+import time
+import math
 
 logger = configure_logging(__name__)
 
@@ -127,6 +129,28 @@ async def get_kafka_producer():
             await asyncio.sleep(5)
 
 
+def generation_time_from_model():
+    min_sleep = settings.generator_min_sleep_ms / 1000.0    # peak activity, high frequency
+    max_sleep = settings.generator_max_sleep_ms / 1000.0    #  low activity,  low frequency
+    CYCLE_LENGTH_SECONDS = settings.generator_cycle_length_seconds
+    return sinusoidal_sleep_time(min_sleep, max_sleep, CYCLE_LENGTH_SECONDS)
+
+
+def sinusoidal_sleep_time(min_sleep, max_sleep, cycle_lenght_seconds, noise_factor=0.15):
+    current_time = time.time()
+    
+    sine_value = math.sin((2 * math.pi * current_time) / cycle_lenght_seconds)
+    normalized_sine = (sine_value + 1) / 2
+    
+    # inversed sine -> peak of sine, min sleep; trough of sine, max sleep
+    target_sleep = min_sleep + (1.0 - normalized_sine) * (max_sleep - min_sleep)
+    
+    # random noise and ensuring a minimum sleep time
+    actual_sleep = random.uniform(target_sleep * (1.0-noise_factor), target_sleep * (1.0+noise_factor))
+    actual_sleep = max(0.001, actual_sleep)
+    return actual_sleep
+
+
 # Main Application
 async def main():
     # Load existing clients from the database once on startup
@@ -182,17 +206,14 @@ async def main():
                 else:
                     logger.info(f"Produced OK ({transaction_data['transaction_id']})")
 
-                # Sleep for a random interval based on settings
-                min_sleep = settings.generator_min_sleep_ms / 1000.0
-                max_sleep = settings.generator_max_sleep_ms / 1000.0
-                await asyncio.sleep(random.uniform(min_sleep, max_sleep))
+                sleep_time = generation_time_from_model()
+                await asyncio.sleep(sleep_time)
 
             except Exception as e:
                 logger.error(f"An error occurred in the main loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
     finally:
         await producer.stop()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

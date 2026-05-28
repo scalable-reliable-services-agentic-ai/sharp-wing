@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     # Generator Configuration
     generator_min_sleep_ms: int
     generator_max_sleep_ms: int
+    generator_cycle_length_seconds: int
 
     # Validator Configuration
     validator_min_amount: int

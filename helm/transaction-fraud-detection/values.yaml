@@ -36,9 +36,7 @@ redis:
 
 
 timescaledb:
-  # image:
-  #   repository: timescale/timescaledb-ha
-  #   tag: "pg15.17-ts2.27.0"
+  # fullnameOverride: {{ .Release.Name }}-timescaledb
   fullnameOverride: "transaction-fraud-detection-timescaledb"
   secrets:
     credentials:
