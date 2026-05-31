@@ -37,7 +37,7 @@ async def fetch_combined_training_data():
     return rows
 
 
-def preprocess_and_train(rows):
+def preprocess_and_train(rows, model_output_path="/app/src/ml_service/models/fraud_model.pkl"):
     if not rows or len(rows) < 100:
         print("Not enough rows to split and train.")
         return
@@ -85,9 +85,10 @@ def preprocess_and_train(rows):
     print("\nPerformance Evaluation on 100% Unseen Test Set:")
     print(classification_report(y_test, preds, target_names=['Safe', 'Fraud']))
 
-    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
-    joblib.dump(model, model_save_path)
-    print(f"Generalized model saved to {model_save_path}")
+    # Dynamic parameter target paths
+    os.makedirs(os.path.dirname(model_output_path), exist_ok=True)
+    joblib.dump(model, model_output_path)
+    print(f"Generalized model saved to {model_output_path}")
 
 
 if __name__ == "__main__":

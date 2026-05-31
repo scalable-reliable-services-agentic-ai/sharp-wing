@@ -5,6 +5,7 @@ import redis.asyncio as aioredis
 from src.config import settings, configure_logging
 from datetime import datetime
 import math
+import os
 from src.ml_service.inference import FraudMLInference
 
 logger = configure_logging(__name__)
@@ -185,13 +186,46 @@ async def process_message(message, producer: AIOKafkaProducer, redis_client: aio
 
         else:
             # GREY ZONE: XGBoost is unsure. Escalating to the LLM Agent for tool analysis
-            logger.warning(f"🔍 [Sieve Gate - AGENT TRIAGE REQUIRED] TX: {tx_id} | ML Score: {risk_score:.2f} falls inside Grey Zone. Engaging System 2 Agent.")
+            logger.warning(f"[Sieve Gate - AGENT TRIAGE REQUIRED] TX: {tx_id} | ML Score: {risk_score:.2f} falls inside Grey Zone. Engaging System 2 Agent.")
             transaction["system_1_reasons"] = [f"ML Ambiguity Escalation: Risk score ({risk_score:.2f}) falls in Grey Zone ($0.15 - $0.80$)."]
             transaction["system_1_routing"] = "ML_GREY_ZONE_ESCALATION"
             await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
 
     except Exception as e:
         logger.error(f"Failed to process transaction cycle for {tx_id}: {e}")
+
+
+async def monitor_and_reload_models(inference_engine: FraudMLInference, interval_seconds: int = 10):
+    """Background loop that watches model paths for updates and triggers an engine reload"""
+    champion_path = "/app/src/ml_service/models/fraud_model.pkl"
+    challenger_path = "/app/src/ml_service/models/challenger_model.pkl"
+
+    last_champ_mtime = os.path.getmtime(champion_path) if os.path.exists(champion_path) else 0
+    last_chal_mtime = os.path.getmtime(challenger_path) if os.path.exists(challenger_path) else 0
+
+    logger.info("Mtime File Watcher active for model hot-swapping...")
+
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            # Check Champion update criteria
+            if os.path.exists(champion_path):
+                current_champ_mtime = os.path.getmtime(champion_path)
+                if current_champ_mtime > last_champ_mtime:
+                    logger.warning("New Champion model detected on disk! Hot-reloading memory handles...")
+                    # Assuming your inference class has a load/reload function:
+                    inference_engine.reload_models()
+                    last_champ_mtime = current_champ_mtime
+
+            # Check Challenger update criteria
+            if os.path.exists(challenger_path):
+                current_chal_mtime = os.path.getmtime(challenger_path)
+                if current_chal_mtime > last_chal_mtime:
+                    logger.warning("New Challenger model detected on disk! Hot-reloading memory handles...")
+                    inference_engine.reload_models()
+                    last_chal_mtime = current_chal_mtime
+        except Exception as e:
+            logger.error(f"Model file watch task encountered an exception: {e}")
 
 
 async def main():
@@ -210,7 +244,10 @@ async def main():
 
     await consumer.start()
     await producer.start()
-    logger.info(f"System 1 Pipeline Operating (Optimized Sieve Gate Automation) Listening on: {IN_TOPIC}")
+
+    asyncio.create_task(monitor_and_reload_models(ml_engine, interval_seconds=10))
+
+    logger.info(f"System 1 Pipeline Operating Listening on: {IN_TOPIC}")
 
     try:
         async for message in consumer:
