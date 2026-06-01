@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-timescaledb-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "endpoints", "pods", "services", "secrets", "nodes"]
+  verbs: ["create", "get", "list", "patch", "update", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-timescaledb-rolebinding
+subjects:
+- kind: ServiceAccount
+  # To jest nazwa konta, na którą narzekał K8s w logach
+  name: {{ .Release.Name }}-timescaledb
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-timescaledb-role

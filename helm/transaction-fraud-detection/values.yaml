@@ -1,0 +1,66 @@
+kafka:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/kafka
+    tag: "4.0.0-debian-12-r10"
+  kraft:
+    enabled: true
+  zookeeper:
+    enabled: false
+  listeners:
+    client:
+      protocol: PLAINTEXT
+  resources:
+    limits:
+      memory: 2Gi
+  broker:
+    offsetsTopicReplicationFactor: 1
+    transactionStateLogReplicationFactor: 1
+    transactionStateLogMinIsr: 1
+
+
+redis:
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+    resources:              # My laptop is having constant 100% usage, so I needed to extend these values
+      limits:
+        cpu: 750m           # 150m by default
+        memory: 256Mi
+    readinessProbe:
+      timeoutSeconds: 8     # 2 by default
+      failureThreshold: 10  # K8s witll try 10 times before rising warning / failure
+
+
+timescaledb:
+  # fullnameOverride: {{ .Release.Name }}-timescaledb
+  fullnameOverride: "transaction-fraud-detection-timescaledb"
+  secrets:
+    credentials:
+      PATRONI_SUPERUSER_PASSWORD: "password"
+  persistentVolumes:
+    data:
+      size: 5Gi
+  patroni:
+    postgresql:
+      pg_hba:
+        - "hostssl all all 0.0.0.0/0 md5"
+        - "hostssl replication all 0.0.0.0/0 md5"
+        - "host all all 0.0.0.0/0 md5"
+        - "local all all trust"
+
+kube-prometheus-stack:
+  grafana:
+    adminPassword: "admin"
+    service:
+      type: NodePort
+      nodePort: 30300  # http://localhost:30300
+  prometheus:
+    prometheusSpec:
+      serviceMonitorSelectorNilUsesHelmValues: false
+    service:
+      type: NodePort
+      nodePort: 30090  # http://localhost:30090

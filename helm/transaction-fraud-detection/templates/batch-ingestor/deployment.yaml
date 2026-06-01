@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-ingestor
+  labels:
+    app: batch-ingestor
+spec:
+  selector:
+    matchLabels:
+      app: batch-ingestor
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
+      labels:
+        app: batch-ingestor
+    spec:
+      containers:
+        - name: batch-ingestor
+          image: "srs_batch_ingestor:latest"
+          imagePullPolicy: IfNotPresent # IfNotPresent | Never
+          
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets

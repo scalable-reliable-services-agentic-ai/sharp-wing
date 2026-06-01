@@ -1,7 +1,10 @@
 docs/app_plan.md
 session-ses_*
 
+secrets.yaml
+
 tmp/
+.tmp/
 
 .idea/
 

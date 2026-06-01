@@ -34,8 +34,192 @@ Then open:
 and
 `http://localhost:5003/`
 
+## Usage with Kubernetes
+
+### prequirements
+
+1. install `helm`:
+```bash
+```
+
+1. install `kubectl`:
+```bash
+```
+
+1. install `npm`:
+```bash
+```
+
+1. install `vite`:
+```bash
+```
+
+1. install npm packages IN FRONTEND DIR
+```bash
+cd frontend-dashboard
+npm install
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install 22
+nvm use 22
+```
+
+
+### building
+
+1. Starting Kubernetes in Docker Desktop App
+
+1. build images from compose.yaml (static images, without runtime info):
+```bash
+docker compose build
+```
+
+### when adding new dependendcies (updating chart.yaml)
+
+1. repo update
+    ```bash
+    helm repo update
+    ```
+
+1. dependency update
+    ```bash
+    helm dependency update ./helm/transaction-fraud-detection/
+    ```
+
+### development
+1. kubernetes verification:
+    ```bash
+    kubectl cluster-info
+    ```
+    ```bash
+    kubectl get nodes
+    ```
+
+1. helm repo:
+    ```bash
+    helm repo update
+    ```
+
+1. helm dependency update:
+    ```bash
+    helm dependency update ./helm/transaction-fraud-detection/
+    ```
+
+1. helm install:
+    ```bash
+    helm install transaction-fraud-detection ./helm/transaction-fraud-detection
+    ```
+
+#### connecting kubernetes network with local browser
+
+1. run this script
+    ```bash
+    ./apptunnels.sh
+    ```
+    it will automatically set the proper tunnels, so it is available then to connect from local browser to k8s network.
+
+- 🌐 API:         http://127.0.0.1:8000
+
+- 📊 Grafana:     http://127.0.0.1:30300
+
+- 📈 Prometheus:  http://127.0.0.1:30090
+
+
+### app logs
+
+```bash
+kubectl get pods
+```
+
+```bash
+kubectl get pods -w
+```
+
+```bash
+kubectl logs -f job/<job-name_or_id>
+```
+
+```bash
+kubectl logs -f <service-name_or_id>
+```
+
+
+<!-- 1. change permissions of the script and run it:
+```bash
+chmod +x ./docker/build_images.sh
+./docker/build_images.sh
+```
+
+this script must be run every time there are changes in the services code. After building the images it is required to run also this script:
+```bash
+kubectl rollout restart deployment <release-name>-validator
+```
+
+### running
+
+1. from main project directory
+```bash
+cd helm/transaction-fraud-detection
+helm dep up
+cd ../..
+```
+
+1. install
+```bash
+helm install transaction-release ./helm/transaction-fraud-detection
+```
+
+1. check:
+```bash
+kubectl get pods
+```
+
+1. creating secrets 
+```bash
+kubectl create secret generic timescaledb-secret --from-literal=password=passward
+```
+
+
+## My order:
+
+```bash
+chmod +x ./docker/build_images.sh
+```
+
+```bash
+helm dep up ./helm/transaction-fraud-detection
+```
+
+```bash
+kubectl create secret generic timescaledb-secret --fromliteral=<pass-key>=<real-pass>
+```
+
+```bash
+helm install transaction-release ./helm/transaction-fraud-detection
+```
+
+### check:
+
+czy są na pewno obrazy
+```bash
+docker images
+```
+
+stan obrazów w k8s
+```bash
+kubectl get pods
+``` -->
+
+## Observability
+
+This project uses Prometheus and Grafana for observability. You can access the Grafana dashboard and Prometheus UI at the following URLs:
+
+- **Grafana:** [http://localhost:3000](http://localhost:3000)
+- **Prometheus:** [http://localhost:9090](http://localhost:9090)
 
 ## Progress
+
 
 [13.04]
 

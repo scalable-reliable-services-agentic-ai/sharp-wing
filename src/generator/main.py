@@ -5,6 +5,8 @@ import psycopg2
 from aiokafka import AIOKafkaProducer
 from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
+import time
+import math
 
 logger = configure_logging(__name__)
 
@@ -36,7 +38,7 @@ def fetch_existing_clients():
         logger.info(f"Successfully loaded {len(clients)} existing clients.")
         return clients
     except Exception as e:
-        logger.error(f"Failed to fetch clients from Database: {e}")
+        logger.error(f"Failed to fetch clients from Database: {e}", exc_info=True)
         return []
 
 
@@ -50,7 +52,7 @@ def generate_realistic_location(client_type):
             f"{random.uniform(-10.0, 20.0)}, {random.uniform(95.0, 140.0)}",  # SE Asia
             f"{random.uniform(-35.0, 35.0)}, {random.uniform(-17.0, 51.0)}",  # Africa
             f"{random.uniform(40.0, 60.0)}, {random.uniform(20.0, 50.0)}",  # Eastern Europe
-            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}"  # South America
+            f"{random.uniform(-55.0, 12.0)}, {random.uniform(-80.0, -35.0)}",  # South America
         ]
         return random.choice(high_risk_zones)
 
@@ -123,8 +125,30 @@ async def get_kafka_producer():
             logger.info("AIOKafkaProducer connected.")
             return producer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
+
+
+def generation_time_from_model():
+    min_sleep = settings.generator_min_sleep_ms / 1000.0    # peak activity, high frequency
+    max_sleep = settings.generator_max_sleep_ms / 1000.0    #  low activity,  low frequency
+    CYCLE_LENGTH_SECONDS = settings.generator_cycle_length_seconds
+    return sinusoidal_sleep_time(min_sleep, max_sleep, CYCLE_LENGTH_SECONDS)
+
+
+def sinusoidal_sleep_time(min_sleep, max_sleep, cycle_lenght_seconds, noise_factor=0.15):
+    current_time = time.time()
+    
+    sine_value = math.sin((2 * math.pi * current_time) / cycle_lenght_seconds)
+    normalized_sine = (sine_value + 1) / 2
+    
+    # inversed sine -> peak of sine, min sleep; trough of sine, max sleep
+    target_sleep = min_sleep + (1.0 - normalized_sine) * (max_sleep - min_sleep)
+    
+    # random noise and ensuring a minimum sleep time
+    actual_sleep = random.uniform(target_sleep * (1.0-noise_factor), target_sleep * (1.0+noise_factor))
+    actual_sleep = max(0.001, actual_sleep)
+    return actual_sleep
 
 
 # Main Application
@@ -174,7 +198,7 @@ async def main():
 
                 # Log success or fraud
                 if getattr(transaction, "is_fraud", False) or transaction_data.get(
-                        "is_fraud"
+                    "is_fraud"
                 ):
                     logger.warning(
                         f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}"
@@ -182,17 +206,14 @@ async def main():
                 else:
                     logger.info(f"Produced OK ({transaction_data['transaction_id']})")
 
-                # Sleep for a random interval based on settings
-                min_sleep = settings.generator_min_sleep_ms / 1000.0
-                max_sleep = settings.generator_max_sleep_ms / 1000.0
-                await asyncio.sleep(random.uniform(min_sleep, max_sleep))
+                sleep_time = generation_time_from_model()
+                await asyncio.sleep(sleep_time)
 
             except Exception as e:
-                logger.error(f"An error occurred in the main loop: {e}")
+                logger.error(f"An error occurred in the main loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
     finally:
         await producer.stop()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from faker import Faker
 from src.config import settings, configure_logging
 from src.generator.transaction import Transaction
+import math
+import time
 
 logger = configure_logging(__name__)
 
@@ -21,16 +23,35 @@ DB_CONFIG = {
     "host": settings.db_host,
     "port": settings.postgres_port,
 }
+MAX_RETRIES = 6
 
 
 def setup_db():
+    """Establishes database schema configuration utilizing an exponential retry loop (Preserved from Teammate)"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    conn = psycopg2.connect(**DB_CONFIG)
-    with conn.cursor() as cursor:
-        with open(os.path.join(current_dir, "sql/setup.sql"), "r") as f:
-            cursor.execute(f.read())
-    conn.commit()
-    return conn
+    RETRIES = 0
+
+    while RETRIES < MAX_RETRIES:
+        try:
+            logger.info(f"Attempt {RETRIES + 1} to connect to DB...")
+            conn = psycopg2.connect(**DB_CONFIG)
+            with conn.cursor() as cursor:
+                with open(os.path.join(current_dir, "sql/setup.sql"), "r") as f:
+                    cursor.execute(f.read())
+            conn.commit()
+            return conn
+        except psycopg2.OperationalError as e:
+            logger.warning(f"Attempt {RETRIES + 1} failed: {e}")
+            RETRIES += 1
+            if RETRIES < MAX_RETRIES:
+                retry_time = 10 * math.floor((RETRIES + 1) ** 2 / 2)
+                logger.info(f"Retrying in {retry_time} seconds...")
+                time.sleep(retry_time)
+            else:
+                logger.error("Max retries reached. Stopping attempts to connect to DB.")
+                raise
+    else:
+        raise Exception("Failed to connect to database after multiple attempts")
 
 
 def get_approx_geolocation(region):
@@ -156,17 +177,6 @@ def _set_smurfing_amount_and_geoloc(t, base_time):
     return [t]
 
 
-def _set_ato_amount_and_geoloc(t, base_time):
-    t.amount = round(random.uniform(20000.0, 50000.0), 2)
-    t.geolocation = get_approx_geolocation("GLOBAL")
-    t.timestamp = base_time + timedelta(
-        days=random.randint(0, 30), hours=random.choice([2, 3, 4])
-    )
-    t.is_fraud = True
-    t.fraud_reason = "Account Takeover (ATO)"
-    return [t]
-
-
 def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_counter):
     # Transaction 1: Normal IT transaction
     t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=10)
@@ -189,6 +199,17 @@ def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_c
     return [t, t2]
 
 
+def _set_ato_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(20000.0, 50000.0), 2)
+    t.geolocation = get_approx_geolocation("GLOBAL")
+    t.timestamp = base_time + timedelta(
+        days=random.randint(0, 30), hours=random.choice([2, 3, 4])
+    )
+    t.is_fraud = True
+    t.fraud_reason = "Account Takeover (ATO)"
+    return [t]
+
+
 def generate_transactions(clients, target_rows):
     transactions_data = []
     base_time = datetime.now() - timedelta(days=30)
@@ -199,22 +220,18 @@ def generate_transactions(clients, target_rows):
         client = random.choice(clients)
         ctype = client["client_type"]
 
-        # Base Setup
         t = Transaction()
         t.sender_id = client["sender_id"]
         t.transaction_id = (day_code * 1_000_000) + unique_id_counter
         unique_id_counter += 1
 
-        # Apply the logic
         configured_txs = apply_amount_and_geoloc(
             t, ctype, base_time, day_code, unique_id_counter
         )
 
-        # Handle IDs for double-transactions
         if len(configured_txs) > 1:
-            unique_id_counter += 1  # Bump counter again since t2 consumed an ID
+            unique_id_counter += 1
 
-        # Append finalized data
         for tx in configured_txs:
             data = tx.generate_transaction_data()
             transactions_data.append(
@@ -257,31 +274,32 @@ def load_to_db(conn, transactions_data):
             insert_query = f.read()
         execute_values(cursor, insert_query, formatted_rows)
         conn.commit()
-        logger.info(
-            f"Successfully inserted {len(formatted_rows)} rows into PostgreSQL."
-        )
+        logger.info(f"Successfully inserted {len(formatted_rows)} rows into PostgreSQL.")
 
 
 if __name__ == "__main__":
     logger.info("Connecting to PostgreSQL...")
-    with setup_db() as conn:
+    try:
+        with setup_db() as conn:
 
-        # Idempotency Check
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM transactions;")
-            count = cursor.fetchone()[0]
+            # 🛠️ Idempotency Verification Check Gateway (Preserved from Your Branch)
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM transactions;")
+                count = cursor.fetchone()[0]
 
-            if count > 0:
-                logger.info(f"Database already contains {count} rows. Skipping seed process.")
-                sys.exit(0)
+                if count > 0:
+                    logger.info(f"Database already contains {count} rows. Skipping seed process.")
+                    sys.exit(0)
 
-        logger.info("Generating clients...")
-        clients = generate_client_data(num_clients=5000)
+            logger.info("Generating clients...")
+            clients = generate_client_data(num_clients=5000)
 
-        logger.info("Generating transactions based on personas...")
-        transactions_data = generate_transactions(clients, target_rows=15000)
+            logger.info("Generating transactions based on personas...")
+            transactions_data = generate_transactions(clients, target_rows=15000)
 
-        logger.info("Loading data into Database...")
-        load_to_db(conn, transactions_data)
+            logger.info("Loading data into Database...")
+            load_to_db(conn, transactions_data)
+            logger.info("Database seeding complete!")
 
-    logger.info("Database seeding complete!")
+    except Exception as e:
+        logger.error(f"An error occurred during seeding context lifecycle: {e}", exc_info=True)

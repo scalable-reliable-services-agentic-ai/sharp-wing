@@ -19,6 +19,7 @@ dependencies = [
     "litellm",
     "openai",
     "fastmcp",
+    "prometheus-client",
     "python-jose[cryptography]",
     "passlib[bcrypt]",
     "python-multipart",

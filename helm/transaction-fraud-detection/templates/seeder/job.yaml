@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seeder
+  labels:
+    app: seeder
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 10 
+  template:
+    metadata:
+      labels:
+        app: seeder
+    spec:
+      # initContainers:
+      #   - name: wait-for-timescaledb
+      #     image: "postgres:15-alpine"
+      #     command:  
+      #       - 'sh'
+      #       - '-c'
+      #       - >
+      #         until pg_isready -h transaction-fraud-detection-timescaledb -p 5432;
+      #         do 
+      #           echo "Czekam na uruchomienie TimescaleDB..."; 
+      #           sleep 3; 
+      #         done;
+      #         echo "Baza gotowa, uruchamiam Seedera!"
+      containers:
+        - name: seeder
+          image: "srs_seeder:latest"
+          imagePullPolicy: Always  # IfNotPresent IfNotPresent | Never
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets
+
+      restartPolicy: OnFailure

@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-triage
+  labels:
+    app: fraud-triage
+spec:
+  selector:
+    matchLabels:
+      app: fraud-triage
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
+      labels:
+        app: fraud-triage
+    spec:
+      containers:
+        - name: fraud-triage
+          image: "srs_fraud_triage:latest"
+          imagePullPolicy: IfNotPresent # IfNotPresent | Never
+          
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets

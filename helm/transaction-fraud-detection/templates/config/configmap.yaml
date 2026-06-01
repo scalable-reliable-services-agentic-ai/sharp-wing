@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: srs-environment-config
+data:
+  # KAFKA_BOOTSTRAP_SERVERS: "transaction-fraud-detection-kafka:9092"
+  KAFKA_BROKER: {{ .Release.Name }}-kafka:9092
+
+  REDIS_HOST: {{ .Release.Name }}-redis-master
+  REDIS_PORT: "6379"
+
+  # POSTGRES_HOST: "transaction-fraud-detection-timescaledb-single"
+  DB_HOST: "transaction-fraud-detection-timescaledb"
+  # DB_HOST: {{ .Release.Name }}-timescaledb
+  POSTGRES_DB: "transactions"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "postgres"
+
+  KAFKA_RAW_TRANSACTIONS_TOPIC: "raw-transactions"
+  KAFKA_VALIDATED_TRANSACTIONS_TOPIC: "validated-transactions"
+  KAFKA_INVALID_TRANSACTIONS_TOPIC: "invalid-transactions"
+  KAFKA_NOANOMALY_TRANSACTIONS_TOPIC: "noanomaly-transactions"
+  KAFKA_ANOMALY_DETECTED_TRANSACTIONS_TOPIC: "anomaly-detected-transactions"
+  KAFKA_HUMAN_REVIEW_REQUIRED_TOPIC: "human-review-required"
+  KAFKA_FINAL_TRANSACTIONS_TOPIC: "final-transactions"
+  KAFKA_HUMAN_RESOLVED_TOPIC: "fraud_human_resolved"
+
+  BATCH_SIZE: "5000"
+  BATCH_INTERVAL: "2"
+
+  GENERATOR_MIN_SLEEP_MS: "1"
+  GENERATOR_MAX_SLEEP_MS: "3000"
+  GENERATOR_CYCLE_LENGTH_SECONDS: "180"
+
+  VALIDATOR_MIN_AMOUNT: "0"
+  VALIDATOR_MAX_AMOUNT: "100000"
+
+  LITELLM_PROXY_URL: https://litellm-proxy-1013932759942.europe-west8.run.app
+  LITELLM_GEMINI_MODEL: gemini-2.5-pro
+  LITELLM_MISTRAL_MODEL: vertex_ai/mistral-small-2503
+
+  DASHBOARD_ADMIN_USER: "admin_dev"

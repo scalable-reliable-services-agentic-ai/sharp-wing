@@ -19,4 +19,8 @@ COPY src/ /app/src
 # Set the python path to the root of the app
 ENV PYTHONPATH=/app
 
-CMD ["python", "-u", "-m", "src.reporter.main"]
+EXPOSE 8000
+
+# Uruchamiamy FastAPI za pomocą uvicorn
+# CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.dashboard.api:app", "--host", "0.0.0.0", "--port", "8000"]

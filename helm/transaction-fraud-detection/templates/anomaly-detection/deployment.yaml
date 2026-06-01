@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anomaly-detection
+  labels:
+    app: anomaly-detection
+spec:
+  selector:
+    matchLabels:
+      app: anomaly-detection
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
+      labels:
+        app: anomaly-detection
+    spec:
+      containers:
+        - name: anomaly-detection
+          image: "srs_anomaly_detection:latest"
+          imagePullPolicy: IfNotPresent # IfNotPresent | Never
+          
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets

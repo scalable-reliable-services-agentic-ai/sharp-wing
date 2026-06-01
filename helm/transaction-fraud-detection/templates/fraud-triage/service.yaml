@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-fraud-triage
+  labels:
+    app: fraud-triage
+spec:
+  selector:
+    app: fraud-triage
+  ports:
+    - name: metrics
+      port: 8003
+      targetPort: 8003

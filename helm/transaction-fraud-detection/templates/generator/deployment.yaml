@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: generator
+  labels:
+    app: generator
+spec:
+  selector:
+    matchLabels:
+      app: generator
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
+      labels:
+        app: generator
+    spec:
+      containers:
+        - name: generator
+          image: "srs_generator:latest"
+          imagePullPolicy: IfNotPresent # IfNotPresent | Never
+          
+          envFrom:
+            - configMapRef:
+                name: srs-environment-config
+            - secretRef:
+                name: srs-app-secrets

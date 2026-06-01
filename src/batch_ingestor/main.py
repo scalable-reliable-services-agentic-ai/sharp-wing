@@ -5,6 +5,8 @@ from aiokafka import AIOKafkaConsumer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from prometheus_client import Counter
+from src.prometheus_metrics.metrics import start_metrics_server
 from src.config import settings, configure_logging
 from src.database.models import Base, Transaction
 
@@ -15,12 +17,18 @@ BATCH_INTERVAL = settings.batch_interval
 KAFKA_BROKER = settings.kafka_broker
 DATABASE_URL = settings.async_database_url
 
-# Topics
+# Environment and Constants
 TOPICS = [
     settings.kafka_noanomaly_transactions_topic,
     settings.kafka_final_transactions_topic,
     settings.kafka_human_review_required_topic
 ]
+
+# --- Prometheus Metrics Definition (Preserved from Teammate) ---
+APP_TRANSACTIONS_CNT_INSERTED_DB = Counter(
+    "app_tfd_inserted_transactions",
+    "Number of transactions inserted/ingested into the database",
+)
 
 
 async def get_db_engine():
@@ -31,7 +39,7 @@ async def get_db_engine():
                 logger.info("Database connection established successfully")
                 return engine
         except Exception as e:
-            logger.error(f"Could not connect to database: {e}. Retrying in 5 seconds...")
+            logger.error(f"Could not connect to database: {e}. Retrying in 5 seconds...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -47,7 +55,7 @@ async def setup_database(engine):
             )
             await connection.commit()
     except Exception as e:
-        pass
+        logger.error(f"Error setting up hypertable: {e}", exc_info=True)
 
 
 async def get_kafka_consumer():
@@ -64,7 +72,7 @@ async def get_kafka_consumer():
             logger.info(f"Ingestor connected to End-State Topics: {TOPICS}")
             return consumer
         except Exception as e:
-            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...")
+            logger.error(f"Could not connect to Kafka consumer: {e}. Retrying...", exc_info=True)
             await asyncio.sleep(5)
 
 
@@ -80,16 +88,20 @@ async def main():
         while True:
             try:
                 result = await consumer.getmany(timeout_ms=1000, max_records=BATCH_SIZE)
+
+                records_found_this_poll = 0
+
                 for tp, messages in result.items():
                     for message in messages:
                         tx_data = message.value
                         topic_name = tp.topic
+                        records_found_this_poll += 1
 
-                        # Extract routing and score indicators
+                        # Extract routing and score indicators (Preserved from Your Branch)
                         s1_routing = tx_data.pop("system_1_routing", None)
                         s1_ml_score = tx_data.pop("system_1_ml_score", None)
 
-                        # Dynamic audit state resolution engine
+                        # Advanced Dynamic Audit State Resolution Engine (Preserved from Your Branch)
                         if topic_name == settings.kafka_human_review_required_topic:
                             tx_data["current_state"] = "ESCALATED"
                         elif topic_name == settings.kafka_final_transactions_topic:
@@ -111,7 +123,7 @@ async def main():
                         if "history" not in tx_data or not isinstance(tx_data["history"], dict):
                             tx_data["history"] = {}
 
-                        # Append historical traces
+                        # Append historical traces seamlessly
                         if sys1_reasons:
                             tx_data["history"]["system_1"] = sys1_reasons
                         if ai_eval:
@@ -122,6 +134,10 @@ async def main():
                             tx_data["history"]["system_1_ml_score"] = s1_ml_score
 
                         buffer.append(tx_data)
+
+                # Increment Prometheus database ingestion counter using exact poll sizes
+                if records_found_this_poll > 0:
+                    APP_TRANSACTIONS_CNT_INSERTED_DB.inc(records_found_this_poll)
 
                 time_since_last_flush = time.time() - last_flush_time
                 if len(buffer) >= BATCH_SIZE or (time_since_last_flush > BATCH_INTERVAL and buffer):
@@ -138,7 +154,7 @@ async def main():
                     last_flush_time = time.time()
 
             except Exception as e:
-                logger.error(f"An error occurred during the batch insert loop: {e}")
+                logger.error(f"An error occurred during the batch insert loop: {e}", exc_info=True)
                 buffer = []
     finally:
         await consumer.stop()
@@ -146,4 +162,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    # 📊 Open metrics server on port 8004 for Prometheus mapping
+    start_metrics_server(8004)
     asyncio.run(main())
