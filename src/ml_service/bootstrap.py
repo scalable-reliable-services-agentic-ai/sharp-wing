@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import os
 import subprocess
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
@@ -33,7 +34,6 @@ def main():
 
     # 2. Train the baseline model if the artifact is missing
     model_path = "/app/src/ml_service/models/fraud_model.pkl"
-    import os
     if not os.path.exists(model_path):
         print("Shared model artifact missing. Training baseline model...", flush=True)
         subprocess.run(["python", "-m", "src.ml_service.train"], check=True)
