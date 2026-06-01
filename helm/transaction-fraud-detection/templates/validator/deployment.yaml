@@ -11,6 +11,8 @@ spec:
       app: validator
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
       labels:
         app: validator
     spec:

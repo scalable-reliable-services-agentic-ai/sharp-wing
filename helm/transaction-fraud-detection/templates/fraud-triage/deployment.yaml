@@ -10,6 +10,8 @@ spec:
       app: fraud-triage
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
       labels:
         app: fraud-triage
     spec:

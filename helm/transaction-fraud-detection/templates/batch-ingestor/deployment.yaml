@@ -10,6 +10,8 @@ spec:
       app: batch-ingestor
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config/configmap.yaml") . | sha256sum }}
       labels:
         app: batch-ingestor
     spec:

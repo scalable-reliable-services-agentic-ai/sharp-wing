@@ -54,6 +54,17 @@ and
 ```bash
 ```
 
+1. install npm packages IN FRONTEND DIR
+```bash
+cd frontend-dashboard
+npm install
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install 22
+nvm use 22
+```
+
 
 ### building
 
