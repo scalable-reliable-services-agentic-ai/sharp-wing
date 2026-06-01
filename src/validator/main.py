@@ -11,7 +11,7 @@ from src.prometheus_metrics.metrics import start_metrics_server
 logger = configure_logging(__name__)
 
 
-# --- Metrics Definition ---
+# Metrics Definition
 APP_TRANSACTIONS_CNT_VALID_OUT = Counter(
     "app_tfd_valid_transactions", "Number of transactions that passed validation"
 )

@@ -12,7 +12,7 @@ from src.ml_service.inference import FraudMLInference
 
 logger = configure_logging(__name__)
 
-# --- PROMETHEUS METRICS METRICS SETUP (Preserved from Teammate) ---
+# Prometheus Metrics Setup
 APP_TRANSACTIONS_CNT_FRAUD_ADC_OUT = Counter(
     "app_tfd_anomalous_transactions",
     "Number of transactions flagged as anomalous by rules",
@@ -207,7 +207,7 @@ async def process_message(message, producer: AIOKafkaProducer, redis_client: aio
 
         else:
             # GREY ZONE: XGBoost is unsure. Escalating to the LLM Agent for tool analysis
-            logger.warning(f"🔍 [Sieve Gate - AGENT TRIAGE REQUIRED] TX: {tx_id} | ML Score: {risk_score:.2f} falls inside Grey Zone. Engaging System 2 Agent.")
+            logger.warning(f"[Sieve Gate - AGENT TRIAGE REQUIRED] TX: {tx_id} | ML Score: {risk_score:.2f} falls inside Grey Zone. Engaging System 2 Agent.")
             transaction["system_1_reasons"] = [f"ML Ambiguity Escalation: Risk score ({risk_score:.2f}) falls in Grey Zone ($0.15 - $0.80$)."]
             transaction["system_1_routing"] = "ML_GREY_ZONE_ESCALATION"
             await producer.send_and_wait(OUT_ANOMALY_TOPIC, transaction)
@@ -280,6 +280,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 📊 Expose metrics listener server on port 8002 right on bootstrap initialization
+    # Expose metrics listener server on port 8002 right on bootstrap initialization
     start_metrics_server(8002)
     asyncio.run(main())

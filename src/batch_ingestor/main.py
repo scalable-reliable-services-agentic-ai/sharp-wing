@@ -24,7 +24,7 @@ TOPICS = [
     settings.kafka_human_review_required_topic
 ]
 
-# --- Prometheus Metrics Definition (Preserved from Teammate) ---
+# Prometheus Metrics Definition
 APP_TRANSACTIONS_CNT_INSERTED_DB = Counter(
     "app_tfd_inserted_transactions",
     "Number of transactions inserted/ingested into the database",
@@ -162,6 +162,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 📊 Open metrics server on port 8004 for Prometheus mapping
+    # Open metrics server on port 8004 for Prometheus mapping
     start_metrics_server(8004)
     asyncio.run(main())

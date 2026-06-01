@@ -14,7 +14,7 @@ from src.prometheus_metrics.metrics import start_metrics_server
 
 logger = configure_logging(__name__)
 
-# --- Prometheus Metrics Definition (Preserved from Teammate) ---
+# Prometheus Metrics Definition
 HUMAN_REVIEW_CNT = Counter(
     "human_review_required_transactions",
     "Number of transactions requiring human review",
@@ -125,7 +125,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
         response_message = None
 
         while current_step < max_steps:
-            # 🛠️ Rate-Limit Resilient Retry Block (Preserved from Your Branch)
+            # Rate-Limit Resilient Retry Block
             max_retries = 5
             backoff_in_seconds = 15
             response = None
@@ -187,7 +187,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             # Use our bulletproof parser
             llm_output = parse_llm_json(response_message.content)
 
-        # PHASE 2: Observer Evaluation (LLM-as-a-Judge) with integrated backoff logic (Preserved from Your Branch)
+        # PHASE 2: Observer Evaluation (LLM-as-a-Judge) with integrated backoff logic
         max_observer_retries = 3
         observer_backoff = 4
         observer_output = None
@@ -239,7 +239,7 @@ async def triage_transaction(message, producer, session, openai_tools, llm_clien
             HUMAN_REVIEW_CNT.inc()
 
     except json.JSONDecodeError as e:
-        # 🛠️ Structural JSON Parse Failure Fallback Gate (Preserved from Teammate)
+        # Structural JSON Parse Failure Fallback Gate
         logger.warning(f"Failed to parse LLM output JSON string structure. Error: {e}", exc_info=True)
         fallback_output = {
             "requires_human_review": True,
@@ -280,7 +280,7 @@ async def main():
 
     server_params = StdioServerParameters(
         command="python",
-        args=["-m", "src.mcp_server.telemetry_observability"],
+        args=["-m", "src.mcp_server.mcp_tools"],
         env={**os.environ},
     )
     llm_client = AsyncOpenAI(api_key=MODEL_KEY, base_url=MODEL_PROXY)
@@ -315,6 +315,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 📊 Expose Metrics Listener Server Endpoint on port 8003 for Prometheus mapping
+    # Expose Metrics Listener Server Endpoint on port 8003 for Prometheus mapping
     start_metrics_server(8003)
     asyncio.run(main())

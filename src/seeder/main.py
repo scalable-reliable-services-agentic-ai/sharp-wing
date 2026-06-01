@@ -27,7 +27,7 @@ MAX_RETRIES = 6
 
 
 def setup_db():
-    """Establishes database schema configuration utilizing an exponential retry loop (Preserved from Teammate)"""
+    """Establishes database schema configuration utilizing an exponential retry loop"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     RETRIES = 0
 
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     try:
         with setup_db() as conn:
 
-            # 🛠️ Idempotency Verification Check Gateway (Preserved from Your Branch)
+            # Idempotency Verification Check Gateway
             with conn.cursor() as cursor:
                 cursor.execute("SELECT COUNT(*) FROM transactions;")
                 count = cursor.fetchone()[0]
