@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import psycopg2
 from psycopg2.extras import execute_values
@@ -11,7 +12,6 @@ import math
 import time
 
 logger = configure_logging(__name__)
-
 
 fake = Faker()
 
@@ -26,14 +26,8 @@ DB_CONFIG = {
 MAX_RETRIES = 6
 
 
-# possible to use tenacity lib later:
-# @retry(
-#     stop=stop_after_attempt(5),                                     # Maksymalnie 5 prób
-#     wait=wait_fixed(5),                                             # Czekaj 5 sekund pomiędzy próbami
-#     retry=retry_if_exception_type(psycopg2.OperationalError),       # Ponawiaj tylko przy błędach z połączeniem
-#     before_sleep=before_sleep_log(logger, logging.WARNING)          # Loguj każdą nieudaną próbę jako WARNING
-# )
 def setup_db():
+    """Establishes database schema configuration utilizing an exponential retry loop"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     RETRIES = 0
 
@@ -49,7 +43,7 @@ def setup_db():
         except psycopg2.OperationalError as e:
             logger.warning(f"Attempt {RETRIES + 1} failed: {e}")
             RETRIES += 1
-            if RETRIES <= MAX_RETRIES:
+            if RETRIES < MAX_RETRIES:
                 retry_time = 10 * math.floor((RETRIES + 1) ** 2 / 2)
                 logger.info(f"Retrying in {retry_time} seconds...")
                 time.sleep(retry_time)
@@ -183,17 +177,6 @@ def _set_smurfing_amount_and_geoloc(t, base_time):
     return [t]
 
 
-def _set_ato_amount_and_geoloc(t, base_time):
-    t.amount = round(random.uniform(20000.0, 50000.0), 2)
-    t.geolocation = get_approx_geolocation("GLOBAL")
-    t.timestamp = base_time + timedelta(
-        days=random.randint(0, 30), hours=random.choice([2, 3, 4])
-    )
-    t.is_fraud = True
-    t.fraud_reason = "Account Takeover (ATO)"
-    return [t]
-
-
 def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_counter):
     # Transaction 1: Normal IT transaction
     t.timestamp = base_time + timedelta(days=random.randint(0, 30), hours=10)
@@ -216,6 +199,17 @@ def _set_impossible_travel_amount_and_geoloc(t, base_time, day_code, unique_id_c
     return [t, t2]
 
 
+def _set_ato_amount_and_geoloc(t, base_time):
+    t.amount = round(random.uniform(20000.0, 50000.0), 2)
+    t.geolocation = get_approx_geolocation("GLOBAL")
+    t.timestamp = base_time + timedelta(
+        days=random.randint(0, 30), hours=random.choice([2, 3, 4])
+    )
+    t.is_fraud = True
+    t.fraud_reason = "Account Takeover (ATO)"
+    return [t]
+
+
 def generate_transactions(clients, target_rows):
     transactions_data = []
     base_time = datetime.now() - timedelta(days=30)
@@ -226,22 +220,18 @@ def generate_transactions(clients, target_rows):
         client = random.choice(clients)
         ctype = client["client_type"]
 
-        # Base Setup
         t = Transaction()
         t.sender_id = client["sender_id"]
         t.transaction_id = (day_code * 1_000_000) + unique_id_counter
         unique_id_counter += 1
 
-        # Apply the logic
         configured_txs = apply_amount_and_geoloc(
             t, ctype, base_time, day_code, unique_id_counter
         )
 
-        # Handle IDs for double-transactions
         if len(configured_txs) > 1:
-            unique_id_counter += 1  # Bump counter again since t2 consumed an ID
+            unique_id_counter += 1
 
-        # Append finalized data
         for tx in configured_txs:
             data = tx.generate_transaction_data()
             transactions_data.append(
@@ -284,15 +274,23 @@ def load_to_db(conn, transactions_data):
             insert_query = f.read()
         execute_values(cursor, insert_query, formatted_rows)
         conn.commit()
-        logger.info(
-            f"Successfully inserted {len(formatted_rows)} rows into PostgreSQL."
-        )
+        logger.info(f"Successfully inserted {len(formatted_rows)} rows into PostgreSQL.")
 
 
 if __name__ == "__main__":
     logger.info("Connecting to PostgreSQL...")
     try:
         with setup_db() as conn:
+
+            # Idempotency Verification Check Gateway
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM transactions;")
+                count = cursor.fetchone()[0]
+
+                if count > 0:
+                    logger.info(f"Database already contains {count} rows. Skipping seed process.")
+                    sys.exit(0)
+
             logger.info("Generating clients...")
             clients = generate_client_data(num_clients=5000)
 
@@ -304,4 +302,4 @@ if __name__ == "__main__":
             logger.info("Database seeding complete!")
 
     except Exception as e:
-        logger.error(f"An error occurred during seeding: {e}")
+        logger.error(f"An error occurred during seeding context lifecycle: {e}", exc_info=True)
