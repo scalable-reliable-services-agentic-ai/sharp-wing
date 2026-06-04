@@ -144,6 +144,16 @@ kubectl logs -f job/<job-name_or_id>
 kubectl logs -f <service-name_or_id>
 ```
 
+```bash
+kubectl logs -f -l app=<service-name> --prefix
+```
+
+for example
+
+```bash
+kubectl logs -f -l app=generator --prefix
+```
+
 
 <!-- 1. change permissions of the script and run it:
 ```bash
