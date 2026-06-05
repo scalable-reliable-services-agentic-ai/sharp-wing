@@ -255,7 +255,7 @@ export default function App() {
       {/* KPI Cards */}
       <div className="grid grid-cols-5 gap-4 mb-8">
         {[
-          { label: "Total Processed", value: kpis.total_processed.toLocaleString(), icon: Database, color: "text-blue-500" },
+          { label: "Total Processed", value: Math.max(0, kpis.total_processed - 15000), icon: Database, color: "text-blue-500" },
           { label: "Automation Rate", value: kpis.automation_rate, icon: Activity, color: "text-blue-400" },
           { label: "System 2 Approved", value: kpis.auto_approved?.toLocaleString() || "0", icon: ShieldCheck, color: "text-emerald-500" },
           { label: "System 2 Denied", value: kpis.auto_denied?.toLocaleString() || "0", icon: ShieldAlert, color: "text-red-500" },

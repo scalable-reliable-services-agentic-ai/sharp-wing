@@ -229,7 +229,7 @@ async def main():
 
     server_params = StdioServerParameters(
         command="python",
-        args=["-m", "src.mcp_server.telemetry_observability"],
+        args=["-m", "src.mcp_server.mcp_tools"],
         env={**os.environ}
     )
     llm_client = AsyncOpenAI(api_key=MODEL_KEY, base_url=MODEL_PROXY)

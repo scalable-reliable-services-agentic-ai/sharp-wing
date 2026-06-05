@@ -208,26 +208,6 @@ services:
       anomaly-detection:
         condition: service_started
 
-  reporter:
-    build:
-      context: .
-      dockerfile: docker/reporter.Dockerfile
-    ports:
-      - "5005:5000"
-    networks:
-      - frontend
-      - backend
-    env_file:
-      - common.env
-      - .env
-    depends_on:
-      kafka-topics-creator:
-        condition: service_completed_successfully
-      timescaledb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   ml-retrain-worker:
     build:
       context: .
