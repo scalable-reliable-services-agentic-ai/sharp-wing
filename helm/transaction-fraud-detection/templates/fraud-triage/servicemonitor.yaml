@@ -10,3 +10,4 @@ spec:
       app: fraud-triage
   endpoints:
     - port: metrics
+      interval: 2s

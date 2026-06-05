@@ -152,7 +152,12 @@ async def get_pending_queue(current_user: str = Depends(get_current_user)):
         rows = await conn.fetch(query)
         queue = [dict(row) for row in rows]
 
-        total_processed = await conn.fetchval("SELECT COUNT(*) FROM transactions;")
+        # total_processed = await conn.fetchval("SELECT COUNT(*) FROM transactions;")
+        total_processed = await conn.fetchval("""
+                                              SELECT COUNT(*)
+                                              FROM transactions
+                                              WHERE current_state IN ('AI_RESOLVED', 'RESOLVED_SAFE', 'RESOLVED_FRAUD', 'AUTO_APPROVED', 'AUTO_DENIED');
+                                            """)
         auto_denied = await conn.fetchval("""
                                           SELECT COUNT(*)
                                           FROM transactions

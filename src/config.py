@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     batch_interval: int
 
     # Generator Configuration
-    generator_min_sleep_ms: int
-    generator_max_sleep_ms: int
+    generator_min_sleep_ms: float
+    generator_max_sleep_ms: float
     generator_cycle_length_seconds: int
 
     # Validator Configuration

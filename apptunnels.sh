@@ -18,16 +18,21 @@ echo "🔌 Opening port 30090 for Prometheus..."
 kubectl port-forward svc/transaction-fraud-detection-prometheus 30090:9090 > /dev/null 2>&1 &
 PID_PROM=$!
 
+echo "🔌 Opening port 5432 for TimescaleDB (PostgreSQL)..."
+kubectl port-forward svc/transaction-fraud-detection-timescaledb 5432:5432 > /dev/null 2>&1 &
+PID_DB=$!
+
 echo ""
 echo "✅ Tunnels are active!"
-echo "🌐 API:         http://127.0.0.1:8000"
-echo "📊 Grafana:     http://127.0.0.1:30300"
-echo "📈 Prometheus:  http://127.0.0.1:30090"
+echo "🌐 API:          http://127.0.0.1:8000"
+echo "📊 Grafana:      http://127.0.0.1:30300"
+echo "📈 Prometheus:   http://127.0.0.1:30090"
+echo "🗄️  TimescaleDB: http://127.0.0.1:5432"   "http://localhost:5432"  
 echo ""
 echo "🛑 Press [Ctrl+C] to close tunnels and exit."
 
 # Step 3: Trap to catch the Ctrl+C signal and gracefully kill background processes
-trap "echo -e '\nClosing tunnels...'; kill $PID_API $PID_GRAFANA $PID_PROM 2>/dev/null; echo 'Done!'; exit" INT
+trap "echo -e '\nClosing tunnels...'; kill $PID_API $PID_GRAFANA $PID_PROM $PID_DB 2>/dev/null; echo 'Done!'; exit" INT
 
 # The script waits indefinitely until the user presses Ctrl+C
 wait

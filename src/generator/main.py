@@ -136,7 +136,7 @@ def generation_time_from_model():
     return sinusoidal_sleep_time(min_sleep, max_sleep, CYCLE_LENGTH_SECONDS)
 
 
-def sinusoidal_sleep_time(min_sleep, max_sleep, cycle_lenght_seconds, noise_factor=0.15):
+def sinusoidal_sleep_time(min_sleep, max_sleep, cycle_lenght_seconds, noise_factor=0.1):
     current_time = time.time()
     
     sine_value = math.sin((2 * math.pi * current_time) / cycle_lenght_seconds)
@@ -147,7 +147,7 @@ def sinusoidal_sleep_time(min_sleep, max_sleep, cycle_lenght_seconds, noise_fact
     
     # random noise and ensuring a minimum sleep time
     actual_sleep = random.uniform(target_sleep * (1.0-noise_factor), target_sleep * (1.0+noise_factor))
-    actual_sleep = max(0.001, actual_sleep)
+    actual_sleep = max(1e-8, actual_sleep)
     return actual_sleep
 
 
@@ -158,6 +158,10 @@ async def main():
 
     producer = await get_kafka_producer()
     logger.info(f"Generator starting, producing to topic '{KAFKA_TOPIC}'.")
+    
+    # Zmienne do kontrolowania przepustowości
+    tasks = set()
+    MAX_CONCURRENT_MESSAGES = 1000
 
     try:
         while True:
@@ -168,16 +172,7 @@ async def main():
                     ctype = client["client_type"]
                     cid = client["sender_id"]
                 else:
-                    persona_types = [
-                        "Standard",
-                        "VIP",
-                        "Corporate",
-                        "NightOwl",
-                        "Fraud_StolenCard",
-                        "Fraud_Smurfing",
-                        "Fraud_ATO",
-                        "Fraud_ImpossibleTravel",
-                    ]
+                    persona_types = ["Standard", "VIP", "Corporate", "NightOwl", "Fraud_StolenCard", "Fraud_Smurfing", "Fraud_ATO", "Fraud_ImpossibleTravel"]
                     weights = [0.35, 0.10, 0.15, 0.20, 0.05, 0.05, 0.05, 0.05]
                     ctype = random.choices(persona_types, weights=weights, k=1)[0]
                     cid = random.randint(100_000, 999_999)
@@ -187,32 +182,46 @@ async def main():
                 transaction.sender_id = cid
                 transaction = apply_persona(transaction, ctype)
 
-                # Fetch data based on the right branch's formatting
                 transaction_data = (
                     transaction.get_kafka_message()
                     if hasattr(transaction, "get_kafka_message")
                     else transaction.generate_transaction_data()
                 )
 
-                await producer.send_and_wait(KAFKA_TOPIC, transaction_data)
+                # ZMIANA 1: Używamy 'send' zamiast 'send_and_wait'. 
+                # 'send' zwraca Future, który dodajemy do zbioru tasków.
+                task = asyncio.create_task(producer.send(KAFKA_TOPIC, transaction_data))
+                tasks.add(task)
+                task.add_done_callback(tasks.discard) # Usuwa zadanie po jego zakończeniu
 
-                # Log success or fraud
-                if getattr(transaction, "is_fraud", False) or transaction_data.get(
-                    "is_fraud"
-                ):
-                    logger.warning(
-                        f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}"
-                    )
-                else:
+                # ZMIANA 2: Ograniczenie logowania w trakcie szczytu
+                sleep_time = generation_time_from_model()
+                
+                if getattr(transaction, "is_fraud", False) or transaction_data.get("is_fraud"):
+                    logger.warning(f"Produced FRAUD ({transaction_data['transaction_id']}): {transaction_data.get('fraud_reason', 'Unknown')}")
+                # Logujemy OK tylko jeśli nie generujemy zbyt szybko (np. sleep > 0.01), 
+                # aby nie zablokować konsoli tysiącami logów na sekundę.
+                elif sleep_time > 0.01: 
                     logger.info(f"Produced OK ({transaction_data['transaction_id']})")
 
-                sleep_time = generation_time_from_model()
-                await asyncio.sleep(sleep_time)
+                # ZMIANA 3: Jeśli mamy za dużo niepotwierdzonych wiadomości (np. 1000), 
+                # czekamy aż Kafka trochę ich przetworzy, żeby nie zapchać pamięci.
+                if len(tasks) >= MAX_CONCURRENT_MESSAGES:
+                    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    tasks = pending
+
+                # ZMIANA 4: Jeśli wyliczony czas jest bardzo mały, 
+                # omijamy asyncio.sleep(0), żeby uniknąć narzutu pętli zdarzeń.
+                if sleep_time > 0.001: 
+                    await asyncio.sleep(sleep_time)
 
             except Exception as e:
                 logger.error(f"An error occurred in the main loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
     finally:
+        # Zanim zamkniemy, upewnijmy się, że wszystkie wiadomości zostały wysłane
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await producer.stop()
 
 if __name__ == "__main__":

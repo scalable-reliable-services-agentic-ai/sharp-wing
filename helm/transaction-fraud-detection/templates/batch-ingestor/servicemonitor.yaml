@@ -10,3 +10,4 @@ spec:
       app: batch-ingestor
   endpoints:
     - port: metrics
+      interval: 2s

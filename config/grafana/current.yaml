@@ -197,16 +197,14 @@ data:
                       }
                     }
                   ],
-                  "queryOptions": {
-                    "interval": "5"
-                  },
+                  "queryOptions": {},
                   "transformations": []
                 }
               },
               "description": "",
               "id": 2,
               "links": [],
-              "title": "avg tps",
+              "title": "New panel",
               "vizConfig": {
                 "group": "gauge",
                 "kind": "VizConfig",
@@ -265,6 +263,90 @@ data:
               }
             }
           },
+          "panel-3": {
+            "kind": "Panel",
+            "spec": {
+              "data": {
+                "kind": "QueryGroup",
+                "spec": {
+                  "queries": [
+                    {
+                      "kind": "PanelQuery",
+                      "spec": {
+                        "hidden": false,
+                        "query": {
+                          "datasource": {
+                            "name": "prometheus"
+                          },
+                          "group": "prometheus",
+                          "kind": "DataQuery",
+                          "spec": {
+                            "editorMode": "builder",
+                            "expr": "app_tfd_anomalous_transactions_total",
+                            "legendFormat": "__auto",
+                            "range": true
+                          },
+                          "version": "v0"
+                        },
+                        "refId": "A"
+                      }
+                    }
+                  ],
+                  "queryOptions": {},
+                  "transformations": []
+                }
+              },
+              "description": "",
+              "id": 3,
+              "links": [],
+              "title": "New panel",
+              "vizConfig": {
+                "group": "stat",
+                "kind": "VizConfig",
+                "spec": {
+                  "fieldConfig": {
+                    "defaults": {
+                      "color": {
+                        "mode": "thresholds"
+                      },
+                      "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                          {
+                            "color": "green",
+                            "value": 0
+                          },
+                          {
+                            "color": "red",
+                            "value": 80
+                          }
+                        ]
+                      }
+                    },
+                    "overrides": []
+                  },
+                  "options": {
+                    "colorMode": "value",
+                    "graphMode": "area",
+                    "justifyMode": "auto",
+                    "orientation": "auto",
+                    "percentChangeColorMode": "standard",
+                    "reduceOptions": {
+                      "calcs": [
+                        "lastNotNull"
+                      ],
+                      "fields": "",
+                      "values": false
+                    },
+                    "showPercentChange": false,
+                    "textMode": "auto",
+                    "wideLayout": true
+                  }
+                },
+                "version": "13.0.1+security-01"
+              }
+            }
+          },
           "panel-4": {
             "kind": "Panel",
             "spec": {
@@ -294,16 +376,14 @@ data:
                       }
                     }
                   ],
-                  "queryOptions": {
-                    "interval": "5"
-                  },
+                  "queryOptions": {},
                   "transformations": []
                 }
               },
-              "description": "total inserted",
+              "description": "",
               "id": 4,
               "links": [],
-              "title": "Human review pending",
+              "title": "New panel",
               "vizConfig": {
                 "group": "stat",
                 "kind": "VizConfig",
@@ -380,16 +460,14 @@ data:
                       }
                     }
                   ],
-                  "queryOptions": {
-                    "interval": "5"
-                  },
+                  "queryOptions": {},
                   "transformations": []
                 }
               },
-              "description": "invalid",
+              "description": "",
               "id": 5,
               "links": [],
-              "title": "LLM autoreviewed",
+              "title": "New panel",
               "vizConfig": {
                 "group": "stat",
                 "kind": "VizConfig",
@@ -437,7 +515,7 @@ data:
               }
             }
           },
-          "panel-8": {
+          "panel-6": {
             "kind": "Panel",
             "spec": {
               "data": {
@@ -456,7 +534,7 @@ data:
                           "kind": "DataQuery",
                           "spec": {
                             "editorMode": "builder",
-                            "expr": "app_tfd_total_validated_transactions_total",
+                            "expr": "app_tfd_safe_transactions_total",
                             "legendFormat": "__auto",
                             "range": true
                           },
@@ -466,16 +544,14 @@ data:
                       }
                     }
                   ],
-                  "queryOptions": {
-                    "interval": "5"
-                  },
+                  "queryOptions": {},
                   "transformations": []
                 }
               },
-              "description": "[all validated]",
-              "id": 8,
+              "description": "",
+              "id": 6,
               "links": [],
-              "title": "Total transactions processed",
+              "title": "New panel",
               "vizConfig": {
                 "group": "stat",
                 "kind": "VizConfig",
@@ -483,93 +559,7 @@ data:
                   "fieldConfig": {
                     "defaults": {
                       "color": {
-                        "mode": "palette-classic"
-                      },
-                      "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                          {
-                            "color": "green",
-                            "value": 0
-                          },
-                          {
-                            "color": "red",
-                            "value": 80
-                          }
-                        ]
-                      }
-                    },
-                    "overrides": []
-                  },
-                  "options": {
-                    "colorMode": "value",
-                    "graphMode": "area",
-                    "justifyMode": "auto",
-                    "orientation": "auto",
-                    "percentChangeColorMode": "standard",
-                    "reduceOptions": {
-                      "calcs": [
-                        "lastNotNull"
-                      ],
-                      "fields": "",
-                      "values": false
-                    },
-                    "showPercentChange": false,
-                    "textMode": "auto",
-                    "wideLayout": true
-                  }
-                },
-                "version": "13.0.1+security-01"
-              }
-            }
-          },
-          "panel-9": {
-            "kind": "Panel",
-            "spec": {
-              "data": {
-                "kind": "QueryGroup",
-                "spec": {
-                  "queries": [
-                    {
-                      "kind": "PanelQuery",
-                      "spec": {
-                        "hidden": false,
-                        "query": {
-                          "datasource": {
-                            "name": "prometheus"
-                          },
-                          "group": "prometheus",
-                          "kind": "DataQuery",
-                          "spec": {
-                            "editorMode": "builder",
-                            "expr": "app_tfd_valid_transactions_total",
-                            "legendFormat": "__auto",
-                            "range": true
-                          },
-                          "version": "v0"
-                        },
-                        "refId": "A"
-                      }
-                    }
-                  ],
-                  "queryOptions": {
-                    "interval": "5"
-                  },
-                  "transformations": []
-                }
-              },
-              "description": "Valid",
-              "id": 9,
-              "links": [],
-              "title": "Invalid, Algorithmic&ML Frauds",
-              "vizConfig": {
-                "group": "stat",
-                "kind": "VizConfig",
-                "spec": {
-                  "fieldConfig": {
-                    "defaults": {
-                      "color": {
-                        "mode": "palette-classic"
+                        "mode": "thresholds"
                       },
                       "thresholds": {
                         "mode": "absolute",
@@ -621,7 +611,7 @@ data:
                     "kind": "ElementReference",
                     "name": "panel-1"
                   },
-                  "height": 12,
+                  "height": 8,
                   "width": 24,
                   "x": 0,
                   "y": 0
@@ -634,23 +624,10 @@ data:
                     "kind": "ElementReference",
                     "name": "panel-2"
                   },
-                  "height": 10,
+                  "height": 8,
                   "width": 24,
                   "x": 0,
-                  "y": 12
-                }
-              },
-              {
-                "kind": "GridLayoutItem",
-                "spec": {
-                  "element": {
-                    "kind": "ElementReference",
-                    "name": "panel-8"
-                  },
-                  "height": 8,
-                  "width": 12,
-                  "x": 0,
-                  "y": 22
+                  "y": 8
                 }
               },
               {
@@ -662,21 +639,8 @@ data:
                   },
                   "height": 8,
                   "width": 12,
-                  "x": 12,
-                  "y": 22
-                }
-              },
-              {
-                "kind": "GridLayoutItem",
-                "spec": {
-                  "element": {
-                    "kind": "ElementReference",
-                    "name": "panel-9"
-                  },
-                  "height": 8,
-                  "width": 12,
                   "x": 0,
-                  "y": 30
+                  "y": 16
                 }
               },
               {
@@ -689,7 +653,33 @@ data:
                   "height": 8,
                   "width": 12,
                   "x": 12,
-                  "y": 30
+                  "y": 16
+                }
+              },
+              {
+                "kind": "GridLayoutItem",
+                "spec": {
+                  "element": {
+                    "kind": "ElementReference",
+                    "name": "panel-3"
+                  },
+                  "height": 8,
+                  "width": 12,
+                  "x": 0,
+                  "y": 24
+                }
+              },
+              {
+                "kind": "GridLayoutItem",
+                "spec": {
+                  "element": {
+                    "kind": "ElementReference",
+                    "name": "panel-6"
+                  },
+                  "height": 8,
+                  "width": 12,
+                  "x": 12,
+                  "y": 24
                 }
               }
             ]
