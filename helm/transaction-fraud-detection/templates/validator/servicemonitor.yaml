@@ -10,3 +10,4 @@ spec:
       app: validator
   endpoints:
     - port: metrics
+      interval: 2s

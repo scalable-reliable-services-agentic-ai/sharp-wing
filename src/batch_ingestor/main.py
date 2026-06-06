@@ -96,6 +96,7 @@ async def main():
                         tx_data = message.value
                         topic_name = tp.topic
                         records_found_this_poll += 1
+                        # APP_TRANSACTIONS_CNT_INSERTED_DB.inc()
 
                         # Extract routing and score indicators (Preserved from Your Branch)
                         s1_routing = tx_data.pop("system_1_routing", None)

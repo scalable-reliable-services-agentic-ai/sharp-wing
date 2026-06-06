@@ -110,12 +110,14 @@ async def update_tps_gauge():
     while True:
         now = time.time()
 
-        while recent_timestamps and recent_timestamps[0] < now - 60:
+        window_size = 5
+        while recent_timestamps and recent_timestamps[0] < now - window_size:
             recent_timestamps.popleft()
-
-        APP_TRANSACTIONS_AVERAGE_INCOMING_TPS.set(len(recent_timestamps) / 60.0)
-
-        await asyncio.sleep(1)
+        
+        tps_value = len(recent_timestamps) / window_size
+        APP_TRANSACTIONS_AVERAGE_INCOMING_TPS.set(tps_value)
+        logger.info(f"Updated TPS Gauge: {tps_value:.2f} TPS | len: {len(recent_timestamps)}")
+        await asyncio.sleep(0.1)
 
 
 # Core Logic

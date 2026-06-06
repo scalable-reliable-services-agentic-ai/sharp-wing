@@ -9,12 +9,13 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: validator 
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 20
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
-          type: Utilization
-          averageUtilization: 70
+          type: AverageValue
+          averageValue: 100m
+

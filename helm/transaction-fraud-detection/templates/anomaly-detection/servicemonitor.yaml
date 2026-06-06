@@ -10,3 +10,4 @@ spec:
       app: anomaly-detection
   endpoints:
     - port: metrics
+      interval: 2s
