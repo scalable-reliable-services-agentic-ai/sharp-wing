@@ -1,4 +1,9 @@
-# Banking Transaction Fraud Detection System
+# SharpWing
+
+Banking Transaction Fraud Detection System
+
+SRS 2026 Spring/Summer
+
 
 ## Contributors
 
@@ -9,10 +14,127 @@
 
 ## Prerequirements:
 
-- docker (default)
-- [optionaly] uv (if running lockaly without docker)
+- Docker Desktop
+- kubectl
+- helm
+- npm
+- vite
 
 
+## Build and deploy
+
+1. Start Kubernetes (**kind**) in Docker Desktop App
+
+1. Build images (defined in compose.yaml):
+    ```bash
+    docker compose build --no-cache
+    ```
+
+1. Update helm
+    ```bash
+    helm repo update
+    ```
+    ```bash
+    helm dependency update ./helm/transaction-fraud-detection/
+    ```
+
+1. Install and run containers in k8s:
+    ```bash
+    helm install transaction-fraud-detection ./helm/transaction-fraud-detection
+    ```
+
+1. Start operational dashboard
+    ```bash
+    cd frontend-dashboard
+    npm run dev
+    ```
+
+1. Connect k8s internal network to local browser
+    ```bash
+    ./apptunnels.sh
+    ```
+
+## Usage
+
+### Open system dashboards
+
+- 🌐 Operational:   http://127.0.0.1:5173
+
+- 📊 Grafana:       http://127.0.0.1:30300
+
+
+### Development usefull commands
+
+1. list pods, services and jobs and their statuses
+    ```bash
+    kubectl get pods -w
+    ```
+
+1. Get logs of specific pod, service or job
+    ```bash
+    kubectl logs -f <pod-name_or_id>
+    ```
+    ```bash
+    kubectl logs -f -l app=<service-name> --prefix
+    ```
+    ```bash
+    kubectl logs -f job/<job-name_or_id>
+    ```
+
+---
+
+
+
+<!-- ### development
+1. kubernetes verification:
+    ```bash
+    kubectl cluster-info
+    ```
+    ```bash
+    kubectl get nodes
+    ``` -->
+
+<!-- #### connecting kubernetes internal network to local browser -->
+<!-- 
+
+### app logs
+
+```bash
+kubectl get pods
+```
+
+```bash
+kubectl get pods -w
+```
+
+```bash
+kubectl logs -f job/<job-name_or_id>
+```
+
+
+
+
+for example
+
+```bash
+kubectl logs -f -l app=generator --prefix
+```
+
+
+1. install npm packages IN FRONTEND DIR
+```bash
+cd frontend-dashboard
+npm install
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install 22
+nvm use 22
+``` -->
+
+
+<!-- - [optionaly] uv (if running lockaly without docker) -->
+<!-- 
 ## Usage:
 
 To run this toy example paste in terminal one of those commands:
@@ -32,11 +154,11 @@ make setup
 Then open:
 `http://localhost:5000/`
 and
-`http://localhost:5003/`
+`http://localhost:5003/` -->
 
-## Usage with Kubernetes
+<!-- ## Usage with Kubernetes
 
-### prequirements
+### instalations
 
 1. install `helm`:
 ```bash
@@ -44,6 +166,7 @@ and
 
 1. install `kubectl`:
 ```bash
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 ```
 
 1. install `npm`:
@@ -52,107 +175,9 @@ and
 
 1. install `vite`:
 ```bash
-```
-
-1. install npm packages IN FRONTEND DIR
-```bash
-cd frontend-dashboard
-npm install
-
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-source ~/.bashrc
-nvm install 22
-nvm use 22
-```
+``` -->
 
 
-### building
-
-1. Starting Kubernetes in Docker Desktop App
-
-1. build images from compose.yaml (static images, without runtime info):
-```bash
-docker compose build
-```
-
-### when adding new dependendcies (updating chart.yaml)
-
-1. repo update
-    ```bash
-    helm repo update
-    ```
-
-1. dependency update
-    ```bash
-    helm dependency update ./helm/transaction-fraud-detection/
-    ```
-
-### development
-1. kubernetes verification:
-    ```bash
-    kubectl cluster-info
-    ```
-    ```bash
-    kubectl get nodes
-    ```
-
-1. helm repo:
-    ```bash
-    helm repo update
-    ```
-
-1. helm dependency update:
-    ```bash
-    helm dependency update ./helm/transaction-fraud-detection/
-    ```
-
-1. helm install:
-    ```bash
-    helm install transaction-fraud-detection ./helm/transaction-fraud-detection
-    ```
-
-#### connecting kubernetes network with local browser
-
-1. run this script
-    ```bash
-    ./apptunnels.sh
-    ```
-    it will automatically set the proper tunnels, so it is available then to connect from local browser to k8s network.
-
-- 🌐 API:         http://127.0.0.1:8000
-
-- 📊 Grafana:     http://127.0.0.1:30300
-
-- 📈 Prometheus:  http://127.0.0.1:30090
-
-
-### app logs
-
-```bash
-kubectl get pods
-```
-
-```bash
-kubectl get pods -w
-```
-
-```bash
-kubectl logs -f job/<job-name_or_id>
-```
-
-```bash
-kubectl logs -f <service-name_or_id>
-```
-
-```bash
-kubectl logs -f -l app=<service-name> --prefix
-```
-
-for example
-
-```bash
-kubectl logs -f -l app=generator --prefix
-```
 
 
 <!-- 1. change permissions of the script and run it:
@@ -221,7 +246,7 @@ stan obrazów w k8s
 kubectl get pods
 ``` -->
 
-## Observability
+<!-- ## Observability
 
 This project uses Prometheus and Grafana for observability. You can access the Grafana dashboard and Prometheus UI at the following URLs:
 
@@ -270,7 +295,7 @@ So far, these elements are created (for now, really simple; it's more a toy exma
 1. Operational dashboards and human-in-the-loop services
 
 1. Controlled failure of system
-
+ -->
 
 <!--
 ## TODO
