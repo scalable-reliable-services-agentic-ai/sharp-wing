@@ -51,22 +51,8 @@ SRS 2026 Spring/Summer
     ```bash
     docker compose logs -f
     ```
-
-3. Stream live logs for a specific microservice container:
-    ```bash
-    # For the real-time transactional data generator
-    docker compose logs -f generator
-    ```
-    ```bash
-    # For the hybrid anomaly detection machine learning sieve
-    docker compose logs -f ml-service
-    ```
-    ```bash
-    # For the System 2 multi-agent triage service
-    docker compose logs -f fraud-triage
-    ```
-
-4. Bring down the cluster and wipe shared container volumes safely:
+   
+3. Bring down the cluster and wipe shared container volumes safely:
     ```bash
     docker compose down -v
     ```
